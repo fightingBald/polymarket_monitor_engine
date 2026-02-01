@@ -73,6 +73,10 @@ class PolymarketComponent:
                 book = parse_book(message.payload)
                 if book:
                     await self._detector.handle_book(book)
+            elif message.kind == "market_lifecycle":
+                await self._emit_feed_lifecycle(message.payload)
+            elif message.kind in {"price_change", "best_bid_ask"}:
+                logger.debug("feed_price_update", kind=message.kind)
             else:
                 logger.debug("feed_message_ignored", payload=message.payload)
 
@@ -184,6 +188,47 @@ class PolymarketComponent:
             ts_ms=self._clock.now_ms(),
             event_type=EventType.HEALTH_EVENT,
             metrics={"status": status, **metrics},
+        )
+        await self._sink.publish(event)
+
+    async def _emit_feed_lifecycle(self, payload: dict[str, Any]) -> None:
+        event_type = str(payload.get("event_type") or payload.get("type") or "").lower()
+        status = "new" if event_type == "new_market" else "resolved"
+        market_id = (
+            str(
+                payload.get("market")
+                or payload.get("conditionId")
+                or payload.get("condition_id")
+                or payload.get("market_id")
+                or payload.get("marketId")
+                or ""
+            )
+            or None
+        )
+        token_id = payload.get("asset_id") or payload.get("assetId") or payload.get("token_id")
+        if token_id is None:
+            assets_ids = payload.get("assets_ids") or payload.get("asset_ids")
+            if isinstance(assets_ids, list) and assets_ids:
+                token_id = assets_ids[0]
+        token_id = str(token_id) if token_id else None
+        meta = self._token_meta.get(token_id) if token_id else None
+        market = self._markets_by_id.get(market_id) if market_id else None
+
+        event = DomainEvent(
+            event_id=new_event_id(),
+            ts_ms=self._clock.now_ms(),
+            category=(meta.category if meta else (market.category if market else None)),
+            event_type=EventType.MARKET_LIFECYCLE,
+            market_id=market_id or (meta.market_id if meta else None),
+            token_id=token_id,
+            title=(
+                meta.title
+                if meta
+                else (market.question if market else payload.get("question") or payload.get("title"))
+            ),
+            topic_key=(meta.topic_key if meta else (market.topic_key if market else None)),
+            metrics={"status": status},
+            raw=payload,
         )
         await self._sink.publish(event)
 

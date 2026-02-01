@@ -8,6 +8,13 @@
 - 盘子到期/换盘了，订阅得跟着滚，不然就掉线儿了。
 - 事件格式固定，能一锅多发（fan-out）给下游。
 
+## 现在能干啥
+
+- Gamma tags → events/markets，把 finance/geopolitics 的热门盘子挑出来（TopK）。
+- 组装 token_ids（CLOB 资产 ID）订阅 market 通道。
+- 监控大单、1 分钟放量、可选盘口墙。
+- 规范化 DomainEvent，stdout + Redis 一锅端。
+
 ## 架构（六边形，层次清楚）
 
 - `domain/`：核心模型/事件/筛选逻辑。
@@ -54,8 +61,7 @@
 3) 一键整环境：
 
 ```bash
-make bootstrap
-```
+◊```
 
 4) 启动：
 
@@ -113,7 +119,34 @@ docker compose -f deploy/docker-compose.yml up --build
 ### 常见问题
 
 - Redis 连接失败：确认 Redis 起了，或者把 `config/config.yaml` 里 `sinks.redis.enabled` 设成 `false`。
-- DNS/网络错误：确认能访问 `gamma-api.polymarket.com` 和 `clob.polymarket.com`。
+- DNS/网络错误：确认能访问 `gamma-api.polymarket.com` 和 `ws-subscriptions-clob.polymarket.com`。
+
+## Polymarket API 对齐说明（关键）
+
+- Gamma 默认走 `/events`（更适合全量/分类发现），用 `limit + offset` 分页；想退回 `/markets` 就把 `gamma.use_events_endpoint=false`。
+- CLOB WebSocket 默认 `wss://ws-subscriptions-clob.polymarket.com/ws/market`；如果只给 host，会自动补 `/ws/{channel}`。
+- 订阅协议：
+  - 初始订阅：`{"type":"market","assets_ids":[...],"custom_feature_enabled":true,"initial_dump":true}`
+  - 增量订阅/退订：`{"assets_ids":[...],"operation":"subscribe|unsubscribe"}`
+- `custom_feature_enabled=true` 能拿到 `best_bid_ask` 等扩展事件；`price_change` 在 2025‑09‑15 23:00 UTC 后用新结构（有 `price_changes` 数组）。
+
+## Rate Limit / 频控建议
+
+Polymarket 走 Cloudflare 节流，超了会排队不一定直接拒。建议：
+
+- `app.refresh_interval_sec` 别太小（默认 60s）。
+- `gamma.request_interval_ms` 给分页请求留点间隔。
+- 一轮别扫太多标签/分页。
+
+## 配置重点
+
+- `gamma.use_events_endpoint`: 推荐 true，走 events→markets。
+- `gamma.related_tags`: true 会包含关联标签。
+- `gamma.request_interval_ms`: 分页请求之间的最小间隔，防止节流。
+- `clob.custom_feature_enabled`: 拿 `best_bid_ask` 等扩展事件。
+- `clob.initial_dump`: 初始订阅是否回快照。
+- `clob.ping_interval_sec`: 应用层心跳（默认 10s，设成 null 可关）。
+- `signals.*`: 大单/放量/盘口墙阈值。
 
 ## 配置
 
@@ -139,6 +172,7 @@ make build
 make lint
 make test
 make run
+make diagnose
 ```
 
 ## 说明

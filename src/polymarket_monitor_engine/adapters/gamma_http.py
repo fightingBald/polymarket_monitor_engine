@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
@@ -12,9 +14,20 @@ logger = structlog.get_logger(__name__)
 
 
 class GammaHttpCatalog:
-    def __init__(self, base_url: str, timeout_sec: float, page_size: int) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        timeout_sec: float,
+        page_size: int,
+        use_events_endpoint: bool,
+        related_tags: bool,
+        request_interval_ms: int,
+    ) -> None:
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout_sec)
         self._page_size = page_size
+        self._use_events_endpoint = use_events_endpoint
+        self._related_tags = related_tags
+        self._request_interval_ms = request_interval_ms
 
     async def list_tags(self) -> list[Tag]:
         items = await self._paginate("/tags", {})
@@ -34,6 +47,27 @@ class GammaHttpCatalog:
         return parsed
 
     async def list_markets(self, tag_id: str, active: bool = True, closed: bool = False) -> list[Market]:
+        if self._use_events_endpoint:
+            params = {
+                "tag_id": tag_id,
+                "closed": str(closed).lower(),
+                "limit": self._page_size,
+            }
+            if self._related_tags:
+                params["related_tags"] = "true"
+            events = await self._paginate("/events", params)
+            markets: list[Market] = []
+            for event in events:
+                markets.extend(self._extract_markets_from_event(event))
+            return [
+                m
+                for m in markets
+                if m.market_id
+                and (m.active if active else True)
+                and (not m.closed if not closed else True)
+                and not m.resolved
+            ]
+
         params = {
             "tag_id": tag_id,
             "active": str(active).lower(),
@@ -41,69 +75,96 @@ class GammaHttpCatalog:
             "limit": self._page_size,
         }
         items = await self._paginate("/markets", params)
-        return [self._parse_market(item) for item in items]
+        markets = [self._parse_market(item) for item in items]
+        return [m for m in markets if m.market_id]
 
     async def close(self) -> None:
         await self._client.aclose()
 
     async def _paginate(self, path: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         collected: list[dict[str, Any]] = []
-        page = 1
-        next_cursor: str | None = None
+        offset = 0
+        limit = int(params.get("limit", self._page_size))
 
         while True:
             query = dict(params)
-            query.setdefault("limit", self._page_size)
-            if next_cursor:
-                query["cursor"] = next_cursor
-            else:
-                query["page"] = page
+            query["limit"] = limit
+            query["offset"] = offset
 
             resp = await self._client.get(path, params=query)
             resp.raise_for_status()
             payload = resp.json()
-            items, next_cursor = self._extract_items(payload)
+            items = self._extract_items(payload)
             collected.extend(items)
 
-            if next_cursor:
-                continue
-
-            if not items or len(items) < self._page_size:
+            if not items or len(items) < limit:
                 break
-            page += 1
+            offset += limit
+            await self._rate_limit_pause()
 
         logger.info("gamma_paginate", path=path, count=len(collected))
         return collected
 
     @staticmethod
-    def _extract_items(payload: Any) -> tuple[list[dict[str, Any]], str | None]:
-        next_cursor: str | None = None
+    def _extract_items(payload: Any) -> list[dict[str, Any]]:
         items: Iterable[Any]
 
         if isinstance(payload, list):
             items = payload
         elif isinstance(payload, dict):
             items = payload.get("data") or payload.get("results") or []
-            next_cursor = payload.get("next") or payload.get("cursor")
         else:
             items = []
 
-        parsed = [item for item in items if isinstance(item, dict)]
-        return parsed, next_cursor
+        return [item for item in items if isinstance(item, dict)]
+
+    async def _rate_limit_pause(self) -> None:
+        if self._request_interval_ms <= 0:
+            return
+        await asyncio.sleep(self._request_interval_ms / 1000.0)
+
+    @staticmethod
+    def _extract_markets_from_event(event: dict[str, Any]) -> list[Market]:
+        markets_raw = event.get("markets") or []
+        if not isinstance(markets_raw, list):
+            return []
+        markets = [GammaHttpCatalog._parse_market(item) for item in markets_raw if isinstance(item, dict)]
+        for market in markets:
+            if not market.question:
+                market.question = event.get("title") or event.get("slug") or ""
+        return markets
 
     @staticmethod
     def _parse_market(raw: dict[str, Any]) -> Market:
-        market_id = str(raw.get("id") or raw.get("market_id") or raw.get("marketId"))
-        question = raw.get("question") or raw.get("title") or ""
-        active = bool(raw.get("active", True))
-        closed = bool(raw.get("closed", False))
-        resolved = bool(raw.get("resolved", False))
-        end_ts = GammaHttpCatalog._parse_end_ts(raw.get("end_ts") or raw.get("endDate"))
-        liquidity = GammaHttpCatalog._to_float(raw.get("liquidity") or raw.get("liquidityUSD"))
-        volume_24h = GammaHttpCatalog._to_float(raw.get("volume_24h") or raw.get("volume24h"))
+        market_id = str(
+            raw.get("conditionId")
+            or raw.get("condition_id")
+            or raw.get("id")
+            or raw.get("market_id")
+            or raw.get("marketId")
+            or ""
+        )
+        question = raw.get("question") or raw.get("title") or raw.get("description") or ""
+        active = GammaHttpCatalog._to_bool(raw.get("active"), default=True)
+        closed = GammaHttpCatalog._to_bool(raw.get("closed"), default=False)
+        resolved = GammaHttpCatalog._to_bool(raw.get("resolved"), default=False)
+        end_ts = GammaHttpCatalog._parse_end_ts(
+            raw.get("end_ts") or raw.get("endDate") or raw.get("endDateIso")
+        )
+        liquidity = GammaHttpCatalog._to_float(
+            raw.get("liquidity") or raw.get("liquidityUSD") or raw.get("liquidityNum")
+        )
+        volume_24h = GammaHttpCatalog._to_float(
+            raw.get("volume_24h")
+            or raw.get("volume24h")
+            or raw.get("volume24hr")
+            or raw.get("volume24hrClob")
+        )
 
+        token_ids = GammaHttpCatalog._parse_clob_token_ids(raw.get("clobTokenIds"))
         outcomes = GammaHttpCatalog._extract_outcomes(raw)
-        token_ids = [outcome.token_id for outcome in outcomes if outcome.token_id]
+        token_ids.extend([outcome.token_id for outcome in outcomes if outcome.token_id])
+        token_ids = [token_id for token_id in dict.fromkeys(token_ids) if token_id]
 
         return Market(
             market_id=market_id,
@@ -146,6 +207,22 @@ class GammaHttpCatalog:
             return None
 
     @staticmethod
+    def _to_bool(value: Any, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"true", "1", "yes"}:
+                return True
+            if lowered in {"false", "0", "no"}:
+                return False
+        return default
+
+    @staticmethod
     def _extract_outcomes(raw: dict[str, Any]) -> list[OutcomeToken]:
         outcomes: list[OutcomeToken] = []
 
@@ -155,8 +232,15 @@ class GammaHttpCatalog:
             if token_id:
                 outcomes.append(OutcomeToken(token_id=token_id, side=side, raw=token_raw))
 
-        if isinstance(raw.get("outcomes"), list):
-            for outcome in raw["outcomes"]:
+        outcomes_raw = raw.get("outcomes")
+        if isinstance(outcomes_raw, str):
+            try:
+                outcomes_raw = json.loads(outcomes_raw)
+            except json.JSONDecodeError:
+                outcomes_raw = [item.strip() for item in outcomes_raw.split(",") if item.strip()]
+
+        if isinstance(outcomes_raw, list):
+            for outcome in outcomes_raw:
                 if isinstance(outcome, dict):
                     add_token(outcome)
                 elif isinstance(outcome, str):
@@ -168,6 +252,28 @@ class GammaHttpCatalog:
                     add_token(token)
 
         return outcomes
+
+    @staticmethod
+    def _parse_clob_token_ids(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item) for item in value if item]
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return []
+            if text.startswith("["):
+                try:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, list):
+                        return [str(item) for item in parsed if item]
+                except json.JSONDecodeError:
+                    pass
+            if "," in text:
+                return [item.strip() for item in text.split(",") if item.strip()]
+            return [text]
+        return []
 
     @staticmethod
     def _coerce_token_id(token_raw: dict[str, Any]) -> str | None:

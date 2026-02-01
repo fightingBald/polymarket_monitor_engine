@@ -45,8 +45,19 @@ def _parse_ts_ms(value: Any) -> int | None:
 
 def parse_trade(payload: dict[str, Any]) -> TradeTick | None:
     token_id = _get_token_id(payload)
-    price = _to_float(payload.get("price") or payload.get("p"))
-    size = _to_float(payload.get("size") or payload.get("quantity") or payload.get("qty"))
+    price = _to_float(
+        payload.get("price")
+        or payload.get("p")
+        or payload.get("last_trade_price")
+        or payload.get("trade_price")
+    )
+    size = _to_float(
+        payload.get("size")
+        or payload.get("quantity")
+        or payload.get("qty")
+        or payload.get("last_trade_size")
+        or payload.get("trade_size")
+    )
     ts_ms = _parse_ts_ms(payload.get("ts_ms") or payload.get("timestamp") or payload.get("ts"))
     if token_id is None or price is None or size is None or ts_ms is None:
         return None
@@ -85,8 +96,8 @@ def parse_book(payload: dict[str, Any]) -> BookSnapshot | None:
     token_id = _get_token_id(payload)
     if token_id is None:
         return None
-    bids = _parse_levels(payload.get("bids") or payload.get("bid"))
-    asks = _parse_levels(payload.get("asks") or payload.get("ask"))
+    bids = _parse_levels(payload.get("bids") or payload.get("bid") or payload.get("buys"))
+    asks = _parse_levels(payload.get("asks") or payload.get("ask") or payload.get("sells"))
     ts_ms = _parse_ts_ms(payload.get("ts_ms") or payload.get("timestamp") or payload.get("ts"))
     if ts_ms is None:
         ts_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)

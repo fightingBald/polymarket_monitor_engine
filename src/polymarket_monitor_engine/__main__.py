@@ -16,6 +16,7 @@ from polymarket_monitor_engine.application.discovery import MarketDiscovery
 from polymarket_monitor_engine.application.monitor import SignalDetector
 from polymarket_monitor_engine.config import Settings, load_settings
 from polymarket_monitor_engine.util.clock import SystemClock
+from polymarket_monitor_engine.util.httpx_setup import silence_httpx_logs
 from polymarket_monitor_engine.util.logging_setup import configure_logging
 
 logger = structlog.get_logger(__name__)
@@ -33,15 +34,21 @@ def build_component(settings: Settings) -> PolymarketComponent:
         base_url=settings.gamma.base_url,
         timeout_sec=settings.gamma.timeout_sec,
         page_size=settings.gamma.page_size,
+        use_events_endpoint=settings.gamma.use_events_endpoint,
+        related_tags=settings.gamma.related_tags,
+        request_interval_ms=settings.gamma.request_interval_ms,
     )
 
     feed = ClobWebSocketFeed(
         ws_url=settings.clob.ws_url,
         channel=settings.clob.channel,
-        subscribe_action=settings.clob.subscribe_action,
-        unsubscribe_action=settings.clob.unsubscribe_action,
-        asset_key=settings.clob.asset_key,
+        custom_feature_enabled=settings.clob.custom_feature_enabled,
+        initial_dump=settings.clob.initial_dump,
+        ping_interval_sec=settings.clob.ping_interval_sec,
+        ping_message=settings.clob.ping_message,
+        pong_message=settings.clob.pong_message,
         reconnect_backoff_sec=settings.clob.reconnect_backoff_sec,
+        reconnect_max_sec=settings.clob.reconnect_max_sec,
     )
 
     sinks = {}
@@ -108,6 +115,7 @@ def main() -> None:
     args = parse_args()
     settings = load_settings(args.config)
     configure_logging(settings.logging.level)
+    silence_httpx_logs()
 
     component = build_component(settings)
     logger.info("component_start", categories=settings.app.categories)

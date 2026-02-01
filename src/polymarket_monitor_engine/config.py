@@ -67,15 +67,21 @@ class GammaSettings(BaseModel):
     base_url: str = "https://gamma-api.polymarket.com"
     timeout_sec: float = 10.0
     page_size: int = 200
+    use_events_endpoint: bool = True
+    related_tags: bool = False
+    request_interval_ms: int = 0
 
 
 class ClobSettings(BaseModel):
-    ws_url: str = "wss://clob.polymarket.com/ws"
+    ws_url: str = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
     channel: str = "market"
-    subscribe_action: str = "subscribe"
-    unsubscribe_action: str = "unsubscribe"
-    asset_key: str = "assets_ids"
+    custom_feature_enabled: bool = True
+    initial_dump: bool = True
+    ping_interval_sec: int | None = 10
+    ping_message: str = "PING"
+    pong_message: str = "pong"
     reconnect_backoff_sec: int = 5
+    reconnect_max_sec: int = 60
 
 
 class StdoutSinkSettings(BaseModel):
