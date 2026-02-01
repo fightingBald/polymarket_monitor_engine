@@ -3,9 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-echo "[docs] Build or lint documentation artifacts."
-echo "Suggested commands:"
-echo "  - mkdocs build"
-echo "  - sphinx-build docs docs/_build"
-echo "  - npm run docs"
-echo "Update docs/operations.md when you settle on a workflow."
+if [ ! -d "${ROOT_DIR}/docs" ]; then
+  echo "[docs] No docs directory found."
+  exit 0
+fi
+
+echo "[docs] No build step configured. Verify docs content manually."

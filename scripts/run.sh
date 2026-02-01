@@ -3,10 +3,18 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-echo "[run] Start your application or service locally."
-echo "Replace this script with the command that launches your project."
-echo "Examples:"
-echo "  - uvicorn app.main:app --reload"
-echo "  - npm run dev"
-echo "  - go run ./cmd/server"
-echo "Document any prerequisites in README.md and docs/operations.md."
+"${ROOT_DIR}/scripts/_ensure_uv.sh"
+
+if [ ! -d "${ROOT_DIR}/.venv" ]; then
+  echo "[run] Missing .venv. Run: make bootstrap"
+  exit 1
+fi
+
+source "${ROOT_DIR}/.venv/bin/activate"
+
+CONFIG_ARG=""
+if [ -f "${ROOT_DIR}/config/config.yaml" ]; then
+  CONFIG_ARG="--config ${ROOT_DIR}/config/config.yaml"
+fi
+
+python -m polymarket_monitor_engine ${CONFIG_ARG}

@@ -1,6 +1,8 @@
 # AI CODING ASSISTANT GUIDELINES
 ---
+本项目目的在于XXXXXXXXXXXXXXXXXXX
 当我提出需求时， 如果不是一个好主意或者有更优雅的解决方案 ，请说明
+
 
 ## 0) GLOBAL GUARANTEES（输出契约）
 
@@ -11,10 +13,10 @@
 * 做好logging
 * 每次更新扫描更新readme
 * **MUST NOT**：
-    * (除非明确要求重构) 否则禁止引入无关格式化改动或大面积重排；
-    * 修改代码生成产物；
-    * 手写拼接 SQL 字符串（必须使用参数化/Builder/ORM）。
-* Layout Hygiene（目录卫生）：重构或编码引入/移动/删除目录与模块，必须保持分层职责清晰（单向依赖；并在**同一 PR** 同步更新「§2 LAYOUT & PROJECT OVERRIDES」中的布局说明与目录树；同时更新 README 的目录树
+  * 修改代码生成产物；
+  * 手写拼接 SQL 字符串（必须使用参数化/Builder/ORM）。
+* Layout Hygiene（目录卫生）：重构或编码引入/移动/删除目录与模块，必须保持分层职责清晰（单向依赖，同时更新 README 的目录树
+* 若能显著减少代码行数并提升可读性/可维护性，应优先采用成熟的高级库（如 pandas、numpy 等），同时做好依赖说明。 |
 
 **最低可验证性**
 
@@ -31,7 +33,6 @@
 | ----- | ---------------- | ------------------- |
 | 语言/版本 | 遵循项目声明版本  | 过时 API       |
 | 输出    | 统一 diff/完整文件     | 片段化、不可编译拼贴          |
-| 变更范围  | 最小必要改动           | 大范围样式化改动            |
 | 错误处理  | 语义化 error + 分级日志 | `panic`/吞错/裸打印      |
 | 并发    | ctx 取消/超时、无数据竞争  | 忽视 ctx、无界 goroutine |
 | 安全    | 强校验输入、参数化查询      | 信任外部输入、拼接 SQL       |
@@ -43,7 +44,6 @@
 
 * “Should work” ≠ “does work”。未测试的代码只是猜测。
 * 我们在解决问题，而不是堆代码。
-* 最小改动，最大一致性，优先沿用现有模式。
 
 **30 秒自检（全部回答 YES）**
 
@@ -68,7 +68,6 @@
 * 契约集中在 `api/`，生成物在 `api/gen`（或等价），**禁止手改**。
 * 单元测试就近，集成/端到端测试在 `test/`。
 * 配置与脚本集中于 `scripts/` 与 `Makefile`；部署工件统一在 `deploy/`（或等价）。
-
 
 
 
@@ -126,7 +125,6 @@
 | 日志   | 结构化字段，分级打印，严禁 `print` 系调试遗留。                                                |
 | SQL  | 必须参数化/Builder/ORM；禁止字符串拼接；必写事务与隔离意图。                                        |
 | 语言特性 | 善用语言的最新特性（如 Go 泛型、Java 结构化并发、Python 3.12 模式匹配、TS 装饰器等），在保证可读性的前提下提升安全性与表达力。 |
-| 高级库 | 若能显著减少代码行数并提升可读性/可维护性，应优先采用成熟的高级库（如 pandas、numpy 等），同时做好依赖说明。 |
 
 ---
 
@@ -146,9 +144,9 @@
 * **安全**：输入校验与逃逸；Secrets 不入库，运行时注入；遵循最小权限。
 * **可观测性**：
 
-    * 指标：QPS、P95/P99、error_rate、依赖外呼延迟；
-    * 追踪：传播 W3C traceparent 或等价；
-    * 日志：关键路径与失败点留证据，避免重复打印同一 error chain。
+  * 指标：QPS、P95/P99、error_rate、依赖外呼延迟；
+  * 追踪：传播 W3C traceparent 或等价；
+  * 日志：关键路径与失败点留证据，避免重复打印同一 error chain。
 
 ---
 
@@ -157,7 +155,7 @@
 
 ## 10) REFACTOR POLICY（重构策略）
 
-**Allowed**
+**Allowed（为“高内聚低耦合”服务）**
 
 * `EXTRACT_FUNC`、`MOVE_FILE`、`RENAME_SYMBOL`、`SPLIT_FILE`（> ~300 行或关注点混杂时触发）。
 * `UPDATE_LAYOUT_DOC`：结构性变更必须同步更新 §2 的布局约定与目录树；PR 需附迁移说明。
@@ -207,44 +205,6 @@
 
 # LANGUAGE STYLE PACKS（语言风格包）
 
-## A) Go（1.24.x）
-
-* **Formatting/Lint**：`go fmt ./...`、`go vet ./...`、`staticcheck ./...`。
-* **命名**：mixedCaps；接口按能力命名，不加 `I` 前缀；导出最小化。
-* **上下文**：所有外部 I/O 函数首参 `context.Context`，禁止存入结构体。
-* **错误**：包级 sentinel；`fmt.Errorf("op: %w", err)` 包装；HTTP 层统一映射。
-* **接收者**：稳定单字母，如 `(s *Server)`；值/指针接收者遵循可变性与逃逸分析。
-* **并发**：`errgroup`/`context` 控制生命周期；避免无界缓冲；`select` 监听 `ctx.Done()`。
-* **依赖**：路由 `github.com/go-chi/chi/v5`；PG 驱动 `github.com/jackc/pgx/v5`；SQL Builder `github.com/Masterminds/squirrel`；OpenAPI 校验 `github.com/getkin/kin-openapi`；Testcontainers。
-* **API & 生成**：oapi-codegen 开启 `-strict-server`；生成到 `api/gen`；禁止手改。
-* **测试风格（强制）**：
-
-    * 表驱动：`cases := []struct{ name string; in ...; exp ... }{...}`
-    * 子测试：`t.Run(c.name, func(t *testing.T) { c := c; ... })`
-    * 断言：`github.com/stretchr/testify/require`
-    * 集成优先 Testcontainers，HTTP/PG 走真连与隔离资源。
-
-**常见陷阱**
-
-* 在 handler 里起后台 goroutine 且不关联 `ctx`；
-* 拼接 SQL；
-* 把可选参数摊平为长函数签名，优先 Options 模式；
-* 以 `sleep` 凑同步；请用通道/条件或可注入时钟。
-
----
-
-## B) Java（JDK 21）
-
-* **Build**：Gradle 或 Maven，启用 `Werror` 类似的严格模式。
-* **格式**：Google Java Format 或 Spotless；Checkstyle + Error Prone。
-* **命名/结构**：包小写分层清晰；类职责单一；记录类（record）优先装 DTO。
-* **错误**：受检异常仅在边界；业务异常携带语义码；统一 ControllerAdvice 映射。
-* **并发**：虚拟线程/结构化并发优先；CompletableFuture 限定在边界层。
-* **测试**：JUnit 5 + AssertJ + Testcontainers；分层测试夹具；`@Testcontainers`/`@Container` 管理生命周期。
-* **API**：OpenAPI→`springdoc-openapi` 或 Micronaut；生成客户端/服务端 stub。
-
----
-
 ## C) Python（3.12）
 
 * **格式**：`black` + `ruff` + `isort`；类型：`mypy --strict`（合理放宽）。
@@ -252,16 +212,6 @@
 * **异步**：`asyncio` + `anyio`；超时/取消必须；HTTP 用 `httpx`；并发限速与重试回退。
 * **测试**：`pytest` + `pytest-asyncio`；`hypothesis` 可选；Testcontainers for DB/MQ。
 * **配置**：`pydantic-settings`；Secrets 走环境/密管；禁用 `.env` 入库。
-
----
-
-## D) TypeScript / Node（TS 5.x / Node 20）
-
-* **格式**：ESLint（strict）+ Prettier；`tsconfig` 开启 `strict: true`。
-* **运行**：`pnpm` 优先；模块路径别名经 `tsconfig-paths`；生产构建 `tsc` 输出 ESM/CJS 统一约定。
-* **API**：Fastify/Express；输入用 `zod` 或 `valibot` 校验；OpenAPI 生成路由绑定。
-* **测试**：Vitest/Jest；Supertest for HTTP；Testcontainers。
-* **安全**：Helmet/CSP；参数化查询；序列化白名单；避免原型链污染。
 
 ---
 
@@ -282,16 +232,3 @@
 * **测试**：Vitest + Testing Library；端到端用 Playwright。
 
 ---
-
-# CHECKLISTS
-
-* **开发自检**
-
-    * 结构遵循分层与单向依赖
-    * 新增类型/字段向前兼容
-    * 错误只包装一次并含语义前缀
-    * 成功/失败/边界最小测试覆盖
-    * 无敏感信息泄漏
-    * 无循环依赖与隐藏耦合
-    * 未以 `sleep` 伪同步
-    * 本地编译/运行/日志与错误均验证

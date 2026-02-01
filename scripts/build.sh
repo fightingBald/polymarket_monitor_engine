@@ -6,10 +6,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "${ROOT_DIR}/scripts/_ensure_uv.sh"
 
 if [ ! -d "${ROOT_DIR}/.venv" ]; then
-  echo "[lint] Missing .venv. Run: make bootstrap"
+  echo "[build] Missing .venv. Run: make bootstrap"
   exit 1
 fi
 
 source "${ROOT_DIR}/.venv/bin/activate"
-ruff check "${ROOT_DIR}/src" "${ROOT_DIR}/tests"
-ruff format --check "${ROOT_DIR}/src" "${ROOT_DIR}/tests"
+python -m compileall "${ROOT_DIR}/src"

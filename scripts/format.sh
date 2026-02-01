@@ -3,8 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-echo "[format] Apply automated code formatting..."
-echo "Populate this script with the formatters relevant to your stack:"
-echo "  - prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\""
-echo "  - black ${ROOT_DIR}/src ${ROOT_DIR}/tests"
-echo "  - gofmt -w ."
+"${ROOT_DIR}/scripts/_ensure_uv.sh"
+
+if [ ! -d "${ROOT_DIR}/.venv" ]; then
+  echo "[format] Missing .venv. Run: make bootstrap"
+  exit 1
+fi
+
+source "${ROOT_DIR}/.venv/bin/activate"
+ruff format "${ROOT_DIR}/src" "${ROOT_DIR}/tests"

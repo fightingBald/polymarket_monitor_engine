@@ -1,0 +1,16 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    depends_on:
+      - redis
+    environment:
+      PME__SINKS__REDIS__URL: redis://redis:6379/0
+    volumes:
+      - ../config/config.example.yaml:/app/config/config.yaml:ro
+    command: ["python", "-m", "polymarket_monitor_engine", "--config", "/app/config/config.yaml"]

@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+from pathlib import Path
+
+import structlog
+
+from polymarket_monitor_engine.adapters.clob_ws import ClobWebSocketFeed
+from polymarket_monitor_engine.adapters.gamma_http import GammaHttpCatalog
+from polymarket_monitor_engine.adapters.multiplex_sink import MultiplexEventSink
+from polymarket_monitor_engine.adapters.redis_sink import RedisPubSubSink
+from polymarket_monitor_engine.adapters.stdout_sink import StdoutSink
+from polymarket_monitor_engine.application.component import PolymarketComponent
+from polymarket_monitor_engine.application.discovery import MarketDiscovery
+from polymarket_monitor_engine.application.monitor import SignalDetector
+from polymarket_monitor_engine.config import Settings, load_settings
+from polymarket_monitor_engine.util.clock import SystemClock
+from polymarket_monitor_engine.util.logging_setup import configure_logging
+
+logger = structlog.get_logger(__name__)
+
+
+def _default_config_path() -> Path | None:
+    candidate = Path("config/config.yaml")
+    if candidate.exists():
+        return candidate
+    return None
+
+
+def build_component(settings: Settings) -> PolymarketComponent:
+    catalog = GammaHttpCatalog(
+        base_url=settings.gamma.base_url,
+        timeout_sec=settings.gamma.timeout_sec,
+        page_size=settings.gamma.page_size,
+    )
+
+    feed = ClobWebSocketFeed(
+        ws_url=settings.clob.ws_url,
+        channel=settings.clob.channel,
+        subscribe_action=settings.clob.subscribe_action,
+        unsubscribe_action=settings.clob.unsubscribe_action,
+        asset_key=settings.clob.asset_key,
+        reconnect_backoff_sec=settings.clob.reconnect_backoff_sec,
+    )
+
+    sinks = {}
+    if settings.sinks.stdout.enabled:
+        sinks["stdout"] = StdoutSink()
+    if settings.sinks.redis.enabled:
+        sinks["redis"] = RedisPubSubSink(
+            url=settings.sinks.redis.url,
+            channel=settings.sinks.redis.channel,
+        )
+
+    sink = MultiplexEventSink(
+        sinks=sinks,
+        mode=settings.sinks.mode,
+        required_sinks=settings.sinks.required_sinks,
+        routes=settings.sinks.routes,
+        transform=settings.sinks.transform,
+    )
+
+    clock = SystemClock()
+    discovery = MarketDiscovery(
+        catalog=catalog,
+        top_k_per_category=settings.filters.top_k_per_category,
+        hot_sort=settings.filters.hot_sort,
+        min_liquidity=settings.filters.min_liquidity,
+        keyword_allow=settings.filters.keyword_allow,
+        keyword_block=settings.filters.keyword_block,
+        rolling_enabled=settings.rolling.enabled,
+        primary_selection_priority=settings.rolling.primary_selection_priority,
+        max_markets_per_topic=settings.rolling.max_markets_per_topic,
+    )
+    detector = SignalDetector(
+        clock=clock,
+        sink=sink,
+        big_trade_usd=settings.signals.big_trade_usd,
+        big_volume_1m_usd=settings.signals.big_volume_1m_usd,
+        big_wall_size=settings.signals.big_wall_size,
+        cooldown_sec=settings.signals.cooldown_sec,
+    )
+
+    return PolymarketComponent(
+        categories=settings.app.categories,
+        refresh_interval_sec=settings.app.refresh_interval_sec,
+        discovery=discovery,
+        feed=feed,
+        sink=sink,
+        clock=clock,
+        detector=detector,
+    )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Polymarket monitor engine")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=_default_config_path(),
+        help="Path to config YAML/JSON (default: config/config.yaml if present)",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    settings = load_settings(args.config)
+    configure_logging(settings.logging.level)
+
+    component = build_component(settings)
+    logger.info("component_start", categories=settings.app.categories)
+
+    try:
+        asyncio.run(component.run())
+    except KeyboardInterrupt:
+        logger.info("component_shutdown")
+
+
+if __name__ == "__main__":
+    main()
