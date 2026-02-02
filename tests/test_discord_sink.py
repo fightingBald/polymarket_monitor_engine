@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from polymarket_monitor_engine.adapters.discord_sink import DiscordWebhookSink
+from polymarket_monitor_engine.adapters.discord_sink import _build_embed
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
 
 
@@ -21,7 +21,8 @@ def test_discord_format_major_change() -> None:
             "source": "trade",
         },
     )
-    message = DiscordWebhookSink._format_message(event)
-    assert "Major Change" in message
-    assert "Market:" in message
-    assert "Test Market" in message
+    embed = _build_embed(event)
+    assert embed is not None
+    assert "重大变动" in embed.get("title", "")
+    assert "Test Market" in embed.get("description", "")
+    assert any(field.get("name") == "摘要" for field in embed.get("fields", []))
