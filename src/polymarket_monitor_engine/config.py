@@ -102,6 +102,12 @@ class RedisSinkSettings(BaseModel):
     channel: str = "polymarket.events"
 
 
+class DiscordSinkSettings(BaseModel):
+    enabled: bool = False
+    max_retries: int = 5
+    timeout_sec: float = 10.0
+
+
 class SinkSettings(BaseModel):
     mode: str = "best_effort"
     required_sinks: list[str] = Field(default_factory=list)
@@ -109,6 +115,7 @@ class SinkSettings(BaseModel):
     transform: str = "full"
     stdout: StdoutSinkSettings = Field(default_factory=StdoutSinkSettings)
     redis: RedisSinkSettings = Field(default_factory=RedisSinkSettings)
+    discord: DiscordSinkSettings = Field(default_factory=DiscordSinkSettings)
 
     @field_validator("required_sinks", mode="before")
     @classmethod

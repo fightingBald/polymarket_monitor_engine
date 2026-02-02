@@ -53,7 +53,14 @@ clob:
 sinks:
   mode: "best_effort"
   required_sinks: []
-  routes: {}
+  routes:
+    CandidateSelected: ["stdout", "redis"]
+    SubscriptionChanged: ["stdout", "redis"]
+    TradeSignal: ["stdout", "redis", "discord"]
+    BookSignal: ["stdout", "redis"]
+    PriceSignal: ["stdout", "redis"]
+    MarketLifecycle: ["stdout", "redis"]
+    HealthEvent: ["stdout", "redis", "discord"]
   transform: "full"
   stdout:
     enabled: true
@@ -61,3 +68,7 @@ sinks:
     enabled: true
     url: "redis://localhost:6379/0"
     channel: "polymarket.events"
+  discord:
+    enabled: false
+    max_retries: 5
+    timeout_sec: 10

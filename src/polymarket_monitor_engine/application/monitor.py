@@ -212,5 +212,5 @@ class SignalDetector:
                 "notional": notional or 0.0,
                 "source": source,
             },
-            event_type=EventType.PRICE_SIGNAL,
+            event_type=EventType.TRADE_SIGNAL,
         )

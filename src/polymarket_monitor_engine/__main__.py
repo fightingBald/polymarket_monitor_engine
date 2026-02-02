@@ -7,6 +7,7 @@ from pathlib import Path
 import structlog
 
 from polymarket_monitor_engine.adapters.clob_ws import ClobWebSocketFeed
+from polymarket_monitor_engine.adapters.discord_sink import DiscordWebhookSink
 from polymarket_monitor_engine.adapters.gamma_http import GammaHttpCatalog
 from polymarket_monitor_engine.adapters.multiplex_sink import MultiplexEventSink
 from polymarket_monitor_engine.adapters.redis_sink import RedisPubSubSink
@@ -60,6 +61,11 @@ def build_component(settings: Settings) -> PolymarketComponent:
         sinks["redis"] = RedisPubSubSink(
             url=settings.sinks.redis.url,
             channel=settings.sinks.redis.channel,
+        )
+    if settings.sinks.discord.enabled:
+        sinks["discord"] = DiscordWebhookSink(
+            max_retries=settings.sinks.discord.max_retries,
+            timeout_sec=settings.sinks.discord.timeout_sec,
         )
 
     sink = MultiplexEventSink(

@@ -80,6 +80,12 @@ export PME__SINKS__REDIS__URL=redis://localhost:6379/0
 
 提示：`major_change_min_notional` 只对 trade/any 生效，因为盘口更新本身没有成交额。
 
+## Discord 通知
+
+- 环境变量里配 `DISCORD_WEBHOOK_URL`（Discord Incoming Webhook）。
+- 开关可用配置或环境变量：`PME__SINKS__DISCORD__ENABLED=true`。
+- routes 已预置：只把 `TradeSignal` 和 `HealthEvent` 发到 Discord。
+
 ## 常用命令（记这几个就行）
 
 ```bash

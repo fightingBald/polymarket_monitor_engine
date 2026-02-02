@@ -81,6 +81,12 @@ Key knobs:
 
 Note: `major_change_min_notional` only applies to `trade`/`any` sources because book updates do not include notional.
 
+## Discord Webhook
+
+- Set `DISCORD_WEBHOOK_URL` in your environment (Incoming Webhook).
+- Enable via config or env override, e.g. `PME__SINKS__DISCORD__ENABLED=true`.
+- Routes are preconfigured so only `TradeSignal` and `HealthEvent` go to Discord.
+
 ## Commands
 
 ```bash
