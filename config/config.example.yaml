@@ -5,6 +5,8 @@ app:
 logging:
   level: "INFO"
   style: "genz"
+  console: false
+  file_path: "logs/pme.log"
 
 dashboard:
   enabled: true
@@ -70,6 +72,7 @@ sinks:
   routes:
     CandidateSelected: ["stdout", "redis"]
     SubscriptionChanged: ["stdout", "redis"]
+    MonitoringStatus: ["discord"]
     TradeSignal: ["stdout", "redis", "discord"]
     BookSignal: ["stdout", "redis"]
     PriceSignal: ["stdout", "redis"]

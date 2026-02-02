@@ -5,6 +5,7 @@ import asyncio
 from pathlib import Path
 
 import structlog
+from dotenv import load_dotenv
 
 from polymarket_monitor_engine.adapters.clob_ws import ClobWebSocketFeed
 from polymarket_monitor_engine.adapters.discord_sink import DiscordWebhookSink
@@ -151,11 +152,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    load_dotenv()
     args = parse_args()
     settings = load_settings(args.config)
     if args.dashboard:
         settings.dashboard.enabled = True
-    configure_logging(settings.logging.level, settings.logging.style)
+    configure_logging(
+        settings.logging.level,
+        settings.logging.style,
+        settings.logging.console,
+        settings.logging.file_path,
+    )
     silence_httpx_logs()
 
     component = build_component(settings)

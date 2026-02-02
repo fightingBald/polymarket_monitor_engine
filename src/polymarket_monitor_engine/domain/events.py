@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class EventType(StrEnum):
     CANDIDATE_SELECTED = "CandidateSelected"
     SUBSCRIPTION_CHANGED = "SubscriptionChanged"
+    MONITORING_STATUS = "MonitoringStatus"
     TRADE_SIGNAL = "TradeSignal"
     BOOK_SIGNAL = "BookSignal"
     PRICE_SIGNAL = "PriceSignal"

@@ -30,6 +30,8 @@ class AppSettings(BaseModel):
 class LoggingSettings(BaseModel):
     level: str = "INFO"
     style: str = "genz"
+    console: bool = True
+    file_path: str | None = None
 
 
 class DashboardSettings(BaseModel):
@@ -193,6 +195,14 @@ def load_settings(path: Path | None) -> Settings:
 
 
 def _sanitize_env_overrides(prefix: str = "PME__") -> None:
+    list_env_keys = {
+        f"{prefix}APP__CATEGORIES",
+        f"{prefix}FILTERS__HOT_SORT",
+        f"{prefix}FILTERS__KEYWORD_ALLOW",
+        f"{prefix}FILTERS__KEYWORD_BLOCK",
+        f"{prefix}ROLLING__PRIMARY_SELECTION_PRIORITY",
+        f"{prefix}SINKS__REQUIRED_SINKS",
+    }
     for key in list(os.environ.keys()):
         if not key.startswith(prefix):
             continue
@@ -202,6 +212,12 @@ def _sanitize_env_overrides(prefix: str = "PME__") -> None:
         if not value.strip():
             os.environ.pop(key, None)
             continue
+        if key in list_env_keys:
+            stripped = value.strip()
+            if not (stripped.startswith("[") or stripped.startswith("{")):
+                items = [item.strip() for item in stripped.split(",") if item.strip()]
+                os.environ[key] = json.dumps(items)
+                continue
         suffix = key[len(prefix):]
         if "__" not in suffix:
             try:

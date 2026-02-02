@@ -38,6 +38,8 @@ run-dashboard: ## Launch with dashboard + discord only (no redis/stdout)
 	PME__SINKS__DISCORD__ENABLED=true \
 	PME__SINKS__REDIS__ENABLED=false \
 	PME__SINKS__STDOUT__ENABLED=false \
+	PME__LOGGING__CONSOLE=false \
+	PME__LOGGING__FILE_PATH=logs/pme.log \
 	bash scripts/run.sh
 
 diagnose: ## Run DNS + API reachability checks

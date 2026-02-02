@@ -58,6 +58,7 @@ class PolymarketComponent:
         self._unsub_prev_volume: dict[str, float] = {}
         self._unsub_cooldowns: dict[str, int] = {}
         self._last_refresh_start_ms: int | None = None
+        self._startup_notified = False
 
     async def run(self) -> None:
         try:
@@ -86,6 +87,12 @@ class PolymarketComponent:
                     discovery_result.unsubscribable,
                     window_sec=window_sec,
                 )
+                if not self._startup_notified and self._token_ids:
+                    await self._emit_monitoring_status(
+                        discovery_result.markets_by_category,
+                        discovery_result.unsubscribable,
+                    )
+                    self._startup_notified = True
                 if self._dashboard is not None:
                     await self._dashboard.update_unsubscribable(
                         discovery_result.unsubscribable,
@@ -258,6 +265,52 @@ class PolymarketComponent:
         )
         await self._sink.publish(event)
 
+    async def _emit_monitoring_status(
+        self,
+        markets_by_category: dict[str, list[Market]],
+        unsubscribable: list[Market],
+    ) -> None:
+        subscribed_markets = _unique_markets(markets_by_category)
+        token_count = len(self._token_meta)
+        metrics = {
+            "status": "connected",
+            "market_count": len(subscribed_markets),
+            "token_count": token_count,
+            "unsubscribable_count": len(unsubscribable),
+        }
+        event = DomainEvent(
+            event_id=new_event_id(),
+            ts_ms=self._clock.now_ms(),
+            event_type=EventType.MONITORING_STATUS,
+            metrics=metrics,
+            raw={
+                "subscribed_markets": [
+                    {
+                        "market_id": market.market_id,
+                        "title": market.question,
+                        "category": market.category,
+                        "end_ts": market.end_ts,
+                    }
+                    for market in subscribed_markets
+                ],
+                "unsubscribable_markets": [
+                    {
+                        "market_id": market.market_id,
+                        "title": market.question,
+                        "category": market.category,
+                        "end_ts": market.end_ts,
+                    }
+                    for market in unsubscribable
+                ],
+            },
+        )
+        logger.info(
+            "monitoring_status_emit",
+            market_count=len(subscribed_markets),
+            token_count=token_count,
+        )
+        await self._sink.publish(event)
+
     async def _emit_unsubscribable_signals(
         self,
         markets: list[Market],
@@ -387,3 +440,17 @@ def _normalize_side(value: str | None) -> str | None:
     if "NO" in upper:
         return "NO"
     return upper
+
+
+def _unique_markets(markets_by_category: dict[str, list[Market]]) -> list[Market]:
+    seen: set[str] = set()
+    ordered: list[Market] = []
+    for category, markets in markets_by_category.items():
+        for market in markets:
+            if not market.market_id or market.market_id in seen:
+                continue
+            if not market.category:
+                market.category = category
+            ordered.append(market)
+            seen.add(market.market_id)
+    return ordered

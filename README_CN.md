@@ -7,14 +7,13 @@
 默认值来自 `config/config.yaml`：
 
 - Redis：**默认关**
-- Discord：**默认开**（要配 `DISCORD_WEBHOOK_URL`）
+- Discord：**默认开**（`.env` 里填 `DISCORD_WEBHOOK_URL`）
 - 终端仪表盘：**默认开**
 - Stdout sink：**默认关**（不糊仪表盘）
+- 日志：**写到 `logs/pme.log`**（控制台静默）
+- 启动会**自动加载 `.env`**（`DISCORD_WEBHOOK_URL` 会生效）
 
-改法：
-- **长期**：改 `config/config.yaml`
-- **密钥**：放 `.env`
-- **临时**：用 `PME__...` 环境变量
+覆盖顺序：`config/config.yaml` → `.env` → `PME__...` 环境变量。
 
 ## 1) 直接跑起来 🚀
 
@@ -43,6 +42,8 @@ make run-dashboard
 **密钥：**`.env`（不会进 git）  
 **临时覆盖：**`PME__...`
 
+列表类环境变量支持逗号分隔（不用 JSON），例如 `PME__APP__CATEGORIES=finance,politics`。
+
 例子：
 ```bash
 PME__DASHBOARD__ENABLED=true \
@@ -65,6 +66,7 @@ make run
   - `sinks.discord.aggregate_multi_outcome`
   - `sinks.discord.aggregate_window_sec`
   - `sinks.discord.aggregate_max_items`
+- 启动时会自动发一条“已连接 + 监控盘口列表”的状态消息。
 
 ## 6) 网页 Top 盘子 🏆
 
@@ -77,7 +79,16 @@ PME__TOP__ENABLED=true make run
 - `PME__TOP__ORDER`（默认 `volume24hr`）
 - `PME__TOP__FEATURED_ONLY`（更贴近网页 Top）
 
-## 7) 常用命令 🛠️
+## 7) 日志 🧾
+
+默认日志写到 `logs/pme.log`，控制台安静。  
+想看日志：
+
+```bash
+PME__LOGGING__CONSOLE=true make run
+```
+
+## 8) 常用命令 🛠️
 
 ```bash
 make build
@@ -88,13 +99,13 @@ make run-dashboard
 make diagnose
 ```
 
-## 8) 一键自检 🔍
+## 9) 一键自检 🔍
 
 ```bash
 make diagnose
 ```
 
-## 9) 说明 📝
+## 10) 说明 📝
 
 - 不用 API Key。
 - `enableOrderBook=false` 的盘子会显示但不订阅；仍会用刷新间隔的成交量变化触发预警（`web_volume_spike`）。

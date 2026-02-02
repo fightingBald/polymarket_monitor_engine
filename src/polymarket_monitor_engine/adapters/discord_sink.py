@@ -124,6 +124,37 @@ def _build_embed(event: DomainEvent) -> dict | None:
     side = event.side
     category = event.category or "n/a"
 
+    if event.event_type == EventType.MONITORING_STATUS:
+        metrics = event.metrics
+        status = metrics.get("status", "connected")
+        market_count = metrics.get("market_count")
+        token_count = metrics.get("token_count")
+        unsub_count = metrics.get("unsubscribable_count")
+
+        raw = event.raw or {}
+        subscribed = raw.get("subscribed_markets") if isinstance(raw, dict) else None
+        unsub = raw.get("unsubscribable_markets") if isinstance(raw, dict) else None
+
+        subscribed_lines = _format_market_list(subscribed, limit=12)
+        unsub_lines = _format_market_list(unsub, limit=8)
+
+        fields = [
+            {"name": "状态", "value": str(status), "inline": True},
+            {
+                "name": "统计",
+                "value": f"markets: {market_count} | tokens: {token_count} | grey: {unsub_count}",
+                "inline": True,
+            },
+            {"name": "监控盘口", "value": subscribed_lines, "inline": False},
+            {"name": "灰盘（无 orderbook）", "value": unsub_lines, "inline": False},
+        ]
+        return {
+            "title": "🟢 已连接 | 监控启动",
+            "color": 0x2ECC71,
+            "fields": fields,
+            "timestamp": ts.isoformat(),
+        }
+
     if event.event_type == EventType.HEALTH_EVENT:
         status = event.metrics.get("status", "unknown")
         duration = event.metrics.get("duration_ms")
@@ -412,6 +443,23 @@ def _summary_volume_spike(market: str, vol: float | int | None) -> str:
 def _summary_web_volume(market: str, delta: float | int | None, window: int | None) -> str:
     window_text = f"{window}s" if window is not None else "n/a"
     return f"{market} | 灰盘放量 {_fmt_money(delta)} / {window_text}"
+
+
+def _format_market_list(raw: object, limit: int) -> str:
+    if not isinstance(raw, list) or not raw:
+        return "无"
+    lines: list[str] = []
+    for item in raw[:limit]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "(unknown)")
+        category = str(item.get("category") or "n/a")
+        lines.append(f"• [{category}] {title}")
+    if not lines:
+        return "无"
+    if isinstance(raw, list) and len(raw) > limit:
+        lines.append(f"... 还有 {len(raw) - limit} 个")
+    return "\n".join(lines)
 
 
 def _aggregate_lines(events: list[DomainEvent], signal: str, max_items: int) -> list[str]:

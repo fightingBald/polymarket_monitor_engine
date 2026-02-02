@@ -4,14 +4,16 @@
 
 ## 0) Defaults (集中配置) ✅
 
-Out of the box (from `config/config.yaml`):
+From `config/config.yaml` (single source of truth):
 
 - Redis: **OFF**
-- Discord: **ON** (needs `DISCORD_WEBHOOK_URL`)
+- Discord: **ON** (needs `DISCORD_WEBHOOK_URL` in `.env`)
 - Dashboard (TUI): **ON**
-- Stdout sink: **OFF** (keeps the dashboard clean)
+- Stdout sink: **OFF** (keeps the TUI clean)
+- Logs: **write to `logs/pme.log`** (console quiet)
+- `.env` is auto‑loaded on startup (so `DISCORD_WEBHOOK_URL` works)
 
-You can override with `.env` or env vars.
+Override order: `config/config.yaml` → `.env` → `PME__...` env vars.
 
 ## 1) Quickstart 🚀
 
@@ -34,11 +36,13 @@ make run
 make run-dashboard
 ```
 
-## 3) Config (Single Source of Truth) 🧠
+## 3) Config Cheatsheet 🧠
 
 **Primary config:** `config/config.yaml`  
 **Secrets:** `.env` (git‑ignored)  
 **Temporary override:** `PME__...` env vars
+
+List‑type envs accept CSV (no JSON needed), e.g. `PME__APP__CATEGORIES=finance,politics`.
 
 Example:
 ```bash
@@ -67,6 +71,7 @@ PME__DASHBOARD__ENABLED=true make run
   - `sinks.discord.aggregate_multi_outcome`
   - `sinks.discord.aggregate_window_sec`
   - `sinks.discord.aggregate_max_items`
+- On startup, Discord receives a **“connected + monitored markets”** status message.
 
 ## 6) Website “Top” Markets 🏆
 
@@ -79,7 +84,16 @@ Optional:
 - `PME__TOP__ORDER` (default `volume24hr`)
 - `PME__TOP__FEATURED_ONLY` (closest to website Top)
 
-## 7) Commands 🛠️
+## 7) Logging 🧾
+
+Default: logs go to `logs/pme.log` and the console stays quiet.  
+Want console logs back?
+
+```bash
+PME__LOGGING__CONSOLE=true make run
+```
+
+## 8) Commands 🛠️
 
 ```bash
 make build
@@ -90,15 +104,13 @@ make run-dashboard
 make diagnose
 ```
 
-## 8) Diagnostics 🔍
+## 9) Diagnostics 🔍
 
 ```bash
 make diagnose
 ```
 
-Checks DNS + Gamma + WS reachability and config presence.
-
-## 9) Notes 📝
+## 10) Notes 📝
 
 - No API key required for public Gamma/CLOB endpoints.
 - `enableOrderBook=false` markets are **displayed** but not subscribed; they still trigger **refresh‑based volume alerts** (`web_volume_spike`).

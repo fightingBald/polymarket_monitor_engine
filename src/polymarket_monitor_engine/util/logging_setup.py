@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import structlog
 
@@ -28,6 +29,7 @@ GENZ_EVENT_MAP: dict[str, str] = {
     "orderbook_seq_gap": "🧩 盘口序号断档",
     "orderbook_missing_snapshot": "🫥 盘口没快照",
     "web_volume_spike_emit": "🧊 灰盘放量警报",
+    "monitoring_status_emit": "🟢 监控就绪通报",
     "feed_price_update": "💸 价格更新",
     "feed_message_ignored": "🙈 忽略消息",
 }
@@ -50,10 +52,30 @@ def _apply_genz_style(style: str):
     return processor
 
 
-def configure_logging(level: str, style: str = "genz") -> None:
+def configure_logging(
+    level: str,
+    style: str = "genz",
+    console: bool = True,
+    file_path: str | None = None,
+) -> None:
     level_name = level.upper()
     numeric_level = logging._nameToLevel.get(level_name, logging.INFO)
-    logging.basicConfig(level=numeric_level, format="%(message)s")
+    handlers: list[logging.Handler] = []
+    if console:
+        handlers.append(logging.StreamHandler())
+    if file_path:
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(path, encoding="utf-8"))
+    if not handlers:
+        handlers.append(logging.NullHandler())
+
+    logging.basicConfig(
+        level=numeric_level,
+        format="%(message)s",
+        handlers=handlers,
+        force=True,
+    )
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,
