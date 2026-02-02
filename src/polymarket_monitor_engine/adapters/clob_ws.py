@@ -7,6 +7,7 @@ from typing import AsyncIterator
 import orjson
 import structlog
 import websockets
+from websockets.protocol import State
 
 from polymarket_monitor_engine.ports.feed import FeedMessage
 
@@ -42,14 +43,14 @@ class ClobWebSocketFeed:
         self._ping_task: asyncio.Task[None] | None = None
 
     async def connect(self) -> None:
-        if self._ws is None or self._ws.closed:
+        if self._is_closed():
             self._ws = await websockets.connect(self._resolve_ws_url(), ping_interval=None)
             self._subscribed_ids.clear()
             logger.info("clob_connected", ws_url=self._resolve_ws_url())
 
     async def subscribe(self, token_ids: list[str]) -> None:
         self._desired_ids = set(token_ids)
-        if self._ws is None or self._ws.closed:
+        if self._is_closed():
             return
         await self._apply_subscription_changes()
 
@@ -57,6 +58,9 @@ class ClobWebSocketFeed:
         backoff = self._reconnect_backoff_sec
         while not self._stop.is_set():
             try:
+                if not self._desired_ids:
+                    await asyncio.sleep(0.5)
+                    continue
                 await self.connect()
                 await self._ensure_subscription()
                 self._start_ping_task()
@@ -69,6 +73,17 @@ class ClobWebSocketFeed:
                         payload = self._decode(raw)
                     except json.JSONDecodeError:
                         logger.warning("clob_decode_failed")
+                        continue
+                    if isinstance(payload, list):
+                        for item in payload:
+                            if not isinstance(item, dict):
+                                continue
+                            if self._handle_ping_payload(item):
+                                continue
+                            kind = self._detect_kind(item)
+                            yield FeedMessage(kind=kind, payload=item)
+                        continue
+                    if not isinstance(payload, dict):
                         continue
                     if self._handle_ping_payload(payload):
                         continue
@@ -95,7 +110,7 @@ class ClobWebSocketFeed:
         await self._apply_subscription_changes(initial=True)
 
     async def _apply_subscription_changes(self, initial: bool = False) -> None:
-        if self._ws is None or self._ws.closed:
+        if self._is_closed():
             return
 
         if initial or not self._subscribed_ids:
@@ -159,7 +174,7 @@ class ClobWebSocketFeed:
     async def _ping_loop(self) -> None:
         assert self._ping_interval_sec is not None
         while not self._stop.is_set():
-            if self._ws is None or self._ws.closed:
+            if self._is_closed():
                 await asyncio.sleep(self._ping_interval_sec)
                 continue
             await self._ws.send(self._ping_message)
@@ -170,21 +185,28 @@ class ClobWebSocketFeed:
             text = raw.decode("utf-8", errors="ignore")
         else:
             text = raw
-        if text.strip().lower() != "ping":
+        if text.strip().lower() not in {"ping", "pong"}:
             return False
-        if self._ws is None or self._ws.closed:
+        if self._is_closed():
             return True
-        asyncio.create_task(self._ws.send(self._pong_message))
+        if text.strip().lower() == "ping":
+            asyncio.create_task(self._ws.send(self._pong_message))
         return True
 
     def _handle_ping_payload(self, payload: dict) -> bool:
         hint = str(payload.get("type") or payload.get("event_type") or "").lower()
-        if hint != "ping":
+        if hint not in {"ping", "pong"}:
             return False
-        if self._ws is None or self._ws.closed:
+        if self._is_closed():
             return True
-        asyncio.create_task(self._ws.send(self._pong_message))
+        if hint == "ping":
+            asyncio.create_task(self._ws.send(self._pong_message))
         return True
+
+    def _is_closed(self) -> bool:
+        if self._ws is None:
+            return True
+        return self._ws.state in {State.CLOSING, State.CLOSED}
 
     def _resolve_ws_url(self) -> str:
         if "/ws/" in self._ws_url:

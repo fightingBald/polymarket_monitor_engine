@@ -1,6 +1,6 @@
 # Polymarket Monitor Engine
 
-这是个用 **Python 3.14** 写的监控组件，专门盯着 Polymarket 的 finance/geopolitics 盘子，发现大单/放量就吼一嗓子，把规范化的 DomainEvent 往外发（Redis + stdout）。
+这是个用 **Python 3.14** 写的监控件儿，专门盯着 Polymarket 的 finance/geopolitics 盘子，发现大单/放量就吼一嗓子，把规范化的 DomainEvent 往外一甩（Redis + stdout）。
 
 ## 目标（把活整明白）
 
@@ -58,10 +58,11 @@
 
 1) 先把 `uv` 装上（比如 `brew install uv` 或 `pipx install uv`）。
 2) 把 `config/config.example.yaml` 复制成 `config/config.yaml`。
-3) 一键整环境：
+3) 一键整环境（嘎嘎快）：
 
 ```bash
-◊```
+make bootstrap
+```
 
 4) 启动：
 
@@ -69,7 +70,7 @@
 make run
 ```
 
-## 运行手册（一步步）
+## 运行手册（一步步唠明白）
 
 ### 本机方式（推荐）
 
@@ -121,7 +122,7 @@ docker compose -f deploy/docker-compose.yml up --build
 - Redis 连接失败：确认 Redis 起了，或者把 `config/config.yaml` 里 `sinks.redis.enabled` 设成 `false`。
 - DNS/网络错误：确认能访问 `gamma-api.polymarket.com` 和 `ws-subscriptions-clob.polymarket.com`。
 
-## Polymarket API 对齐说明（关键）
+## Polymarket API 对齐说明（关键，别整岔了）
 
 - Gamma 默认走 `/events`（更适合全量/分类发现），用 `limit + offset` 分页；想退回 `/markets` 就把 `gamma.use_events_endpoint=false`。
 - CLOB WebSocket 默认 `wss://ws-subscriptions-clob.polymarket.com/ws/market`；如果只给 host，会自动补 `/ws/{channel}`。
@@ -130,7 +131,7 @@ docker compose -f deploy/docker-compose.yml up --build
   - 增量订阅/退订：`{"assets_ids":[...],"operation":"subscribe|unsubscribe"}`
 - `custom_feature_enabled=true` 能拿到 `best_bid_ask` 等扩展事件；`price_change` 在 2025‑09‑15 23:00 UTC 后用新结构（有 `price_changes` 数组）。
 
-## Rate Limit / 频控建议
+## Rate Limit / 频控建议（别一口吃太猛）
 
 Polymarket 走 Cloudflare 节流，超了会排队不一定直接拒。建议：
 
@@ -138,7 +139,7 @@ Polymarket 走 Cloudflare 节流，超了会排队不一定直接拒。建议：
 - `gamma.request_interval_ms` 给分页请求留点间隔。
 - 一轮别扫太多标签/分页。
 
-## 配置重点
+## 配置重点（重点搁这儿）
 
 - `gamma.use_events_endpoint`: 推荐 true，走 events→markets。
 - `gamma.related_tags`: true 会包含关联标签。
@@ -148,7 +149,7 @@ Polymarket 走 Cloudflare 节流，超了会排队不一定直接拒。建议：
 - `clob.ping_interval_sec`: 应用层心跳（默认 10s，设成 null 可关）。
 - `signals.*`: 大单/放量/盘口墙阈值。
 
-## 配置
+## 配置（咋改）
 
 - 配置文件改 `config/config.yaml`。
 - 环境变量覆盖用 `PME__` 前缀，`__` 表示层级。
@@ -159,13 +160,13 @@ Polymarket 走 Cloudflare 节流，超了会排队不一定直接拒。建议：
 export PME__SINKS__REDIS__URL=redis://localhost:6379/0
 ```
 
-## Docker
+## Docker（想省事就它）
 
 ```bash
 docker compose -f deploy/docker-compose.yml up --build
 ```
 
-## 常用命令
+## 常用命令（常用就这几条）
 
 ```bash
 make build
@@ -175,7 +176,7 @@ make run
 make diagnose
 ```
 
-## 说明
+## 说明（小结）
 
 - DomainEvent 默认 JSON 编码，发到 Redis 的 `polymarket.events` 频道。
 - MVP 只接 Redis；stdout 主要方便本地看日志。

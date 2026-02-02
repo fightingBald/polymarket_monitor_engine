@@ -108,19 +108,29 @@ class PolymarketComponent:
         for category, markets in markets_by_category.items():
             for market in markets:
                 topic_key = market.topic_key or normalize_topic(market.question)
-                outcomes = market.outcomes or [OutcomeToken(token_id=tid) for tid in market.token_ids]
-                for outcome in outcomes:
-                    token_id = outcome.token_id
-                    if not token_id:
-                        continue
-                    mapping[token_id] = TokenMeta(
-                        token_id=token_id,
-                        market_id=market.market_id,
-                        category=category,
-                        title=market.question,
-                        side=_normalize_side(outcome.side),
-                        topic_key=topic_key,
-                    )
+                outcomes = market.outcomes or []
+                token_outcomes = [outcome for outcome in outcomes if outcome.token_id]
+                if token_outcomes:
+                    for outcome in token_outcomes:
+                        token_id = outcome.token_id
+                        mapping[token_id] = TokenMeta(
+                            token_id=token_id,
+                            market_id=market.market_id,
+                            category=category,
+                            title=market.question,
+                            side=_normalize_side(outcome.side),
+                            topic_key=topic_key,
+                        )
+                else:
+                    for token_id in market.token_ids:
+                        mapping[token_id] = TokenMeta(
+                            token_id=token_id,
+                            market_id=market.market_id,
+                            category=category,
+                            title=market.question,
+                            side=None,
+                            topic_key=topic_key,
+                        )
         return mapping
 
     async def _emit_candidates(self, category: str, markets: list[Market]) -> None:
