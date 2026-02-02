@@ -135,6 +135,7 @@ def _build_embed(event: DomainEvent) -> dict | None:
 
         subscribed_lines = _format_market_list(subscribed, limit=12)
         unsub_lines = _format_market_list(unsub, limit=8)
+        category_counts = _format_category_counts(subscribed)
 
         fields = [
             {"name": "状态", "value": str(status), "inline": True},
@@ -143,6 +144,7 @@ def _build_embed(event: DomainEvent) -> dict | None:
                 "value": f"markets: {market_count} | tokens: {token_count} | grey: {unsub_count}",
                 "inline": True,
             },
+            {"name": "分类统计", "value": category_counts, "inline": False},
             {"name": "监控盘口", "value": subscribed_lines, "inline": False},
             {"name": "灰盘（无 orderbook）", "value": unsub_lines, "inline": False},
         ]
@@ -514,6 +516,21 @@ def _format_market_list(raw: object, limit: int) -> str:
     if remaining > 0:
         lines.append(f"... 还有 {remaining} 个")
     return "\n".join(lines)
+
+
+def _format_category_counts(raw: object) -> str:
+    if not isinstance(raw, list) or not raw:
+        return "无"
+    counts: dict[str, int] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        category = str(item.get("category") or "n/a")
+        counts[category] = counts.get(category, 0) + 1
+    if not counts:
+        return "无"
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return "\n".join(f"{name}: {count}" for name, count in ordered)
 
 
 def _aggregate_lines(events: list[DomainEvent], signal: str, max_items: int) -> list[str]:

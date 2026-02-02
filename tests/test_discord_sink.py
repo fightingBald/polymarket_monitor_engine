@@ -88,3 +88,31 @@ def test_discord_format_market_lifecycle() -> None:
     embed = _build_embed(event)
     assert embed is not None
     assert "新盘口" in embed.get("title", "")
+
+
+def test_discord_format_monitoring_status_category_counts() -> None:
+    event = DomainEvent(
+        event_id="evt-4",
+        ts_ms=1_700_000_000_000,
+        event_type=EventType.MONITORING_STATUS,
+        metrics={
+            "status": "connected",
+            "market_count": 3,
+            "token_count": 6,
+            "unsubscribable_count": 1,
+        },
+        raw={
+            "subscribed_markets": [
+                {"market_id": "m1", "title": "A", "category": "finance"},
+                {"market_id": "m2", "title": "B", "category": "finance"},
+                {"market_id": "m3", "title": "C", "category": "geopolitics"},
+            ],
+            "unsubscribable_markets": [],
+        },
+    )
+    embed = _build_embed(event)
+    assert embed is not None
+    fields = embed.get("fields", [])
+    counts = next((field for field in fields if field.get("name") == "分类统计"), None)
+    assert counts is not None
+    assert "finance: 2" in counts.get("value", "")
