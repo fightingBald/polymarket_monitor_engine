@@ -119,3 +119,8 @@ make diagnose
 
 - No API key required for public Gamma/CLOB endpoints.
 - `enableOrderBook=false` markets are **displayed** but not subscribed; they still trigger **refresh‑based volume alerts** (`web_volume_spike`).
+- Uses `uvloop` when available for faster async.
+- Gamma rate limiting is handled by `aiolimiter`.
+- Config merge uses `deepmerge` (lists override instead of append).
+- Tag cache uses `cachetools` TTL cache.
+- Discord category stats use `pandas` for concise grouping.

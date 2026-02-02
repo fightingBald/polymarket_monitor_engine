@@ -114,3 +114,8 @@ make diagnose
 
 - 不用 API Key。
 - `enableOrderBook=false` 的盘子会显示但不订阅；仍会用刷新间隔的成交量变化触发预警（`web_volume_spike`）。
+- 有 `uvloop` 就自动启用（更快）。
+- Gamma 限流由 `aiolimiter` 管。
+- 配置合并用 `deepmerge`（list 直接覆盖，不拼接）。
+- 标签缓存用 `cachetools` TTL。
+- Discord 分类统计用 `pandas` 分组更干净。
