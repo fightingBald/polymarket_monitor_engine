@@ -2,7 +2,7 @@
 
 **One‑liner:** watches Polymarket, detects big moves, and blasts alerts to Discord. 🚨
 
-## 0) Defaults (集中配置) ✅
+## 0) Defaults  ✅
 
 From `config/config.yaml` (single source of truth):
 
