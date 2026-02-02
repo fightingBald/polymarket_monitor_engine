@@ -171,7 +171,12 @@ def main() -> None:
     logger.info("component_start", categories=settings.app.categories)
 
     try:
-        asyncio.run(component.run())
+        try:
+            import uvloop
+
+            uvloop.run(component.run())
+        except ImportError:
+            asyncio.run(component.run())
     except KeyboardInterrupt:
         logger.info("component_shutdown")
 
