@@ -44,7 +44,11 @@ class MarketDiscovery:
                 results[category] = []
                 continue
             markets = await self._catalog.list_markets(tag_id, active=True, closed=False)
-            active_markets = [m for m in markets if m.active and not m.closed and not m.resolved]
+            active_markets = [
+                m
+                for m in markets
+                if m.active and not m.closed and not m.resolved and m.enable_orderbook is not False
+            ]
             for market in active_markets:
                 market.category = category
 

@@ -11,6 +11,7 @@ class EventType(StrEnum):
     SUBSCRIPTION_CHANGED = "SubscriptionChanged"
     TRADE_SIGNAL = "TradeSignal"
     BOOK_SIGNAL = "BookSignal"
+    PRICE_SIGNAL = "PriceSignal"
     MARKET_LIFECYCLE = "MarketLifecycle"
     HEALTH_EVENT = "HealthEvent"
 

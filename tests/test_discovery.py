@@ -40,6 +40,7 @@ async def test_market_discovery_refresh_selects_and_sets_category() -> None:
         Market(market_id="m1", question="A", liquidity=10, volume_24h=50),
         Market(market_id="m2", question="B", liquidity=25, volume_24h=10, active=False),
         Market(market_id="m3", question="C", liquidity=5, volume_24h=100),
+        Market(market_id="m4", question="D", liquidity=999, volume_24h=100, enable_orderbook=False),
     ]
     catalog = FakeCatalog(tags=tags, markets_by_tag={"1": markets})
     discovery = MarketDiscovery(

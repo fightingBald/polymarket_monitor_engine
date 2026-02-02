@@ -66,9 +66,19 @@ export PME__SINKS__REDIS__URL=redis://localhost:6379/0
 
 - `gamma.use_events_endpoint=true`（推荐）
 - `gamma.request_interval_ms`（别请求太猛）
+- `gamma.tags_cache_sec`（标签缓存，别老拉）
+- `gamma.retry_max_attempts`（429/5xx/网络抖动自动重试）
 - `clob.custom_feature_enabled=true`（多点事件）
 - `clob.initial_dump=true`（订阅先来快照）
 - `clob.ping_interval_sec`（心跳，不要就设 null）
+- `clob.resync_on_gap`（序号断档就重订阅）
+- `clob.resync_min_interval_sec`（别狂刷重订阅）
+- `signals.major_change_pct`（重大变动阈值，百分比）
+- `signals.major_change_window_sec`（多长时间内算变动）
+- `signals.major_change_min_notional`（只看成交额足够大的变动）
+- `signals.major_change_source`（trade/book/any，来源）
+
+提示：`major_change_min_notional` 只对 trade/any 生效，因为盘口更新本身没有成交额。
 
 ## 常用命令（记这几个就行）
 
@@ -96,3 +106,5 @@ make diagnose
 ## 要不要 API Key？
 
 不用。这俩接口（Gamma + CLOB 公共 WS）目前都是公开的。
+
+另外：没有 `enableOrderBook=true` 的盘子会被跳过，不订阅。

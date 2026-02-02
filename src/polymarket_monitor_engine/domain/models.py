@@ -22,6 +22,7 @@ class Market(BaseModel):
     market_id: str
     question: str
     category: str | None = None
+    enable_orderbook: bool | None = None
     active: bool = True
     closed: bool = False
     resolved: bool = False

@@ -48,6 +48,10 @@ class SignalSettings(BaseModel):
     big_volume_1m_usd: float = 25_000.0
     big_wall_size: float | None = None
     cooldown_sec: int = 120
+    major_change_pct: float = 5.0
+    major_change_window_sec: int = 60
+    major_change_min_notional: float = 0.0
+    major_change_source: str = "trade"
 
 
 class RollingSettings(BaseModel):
@@ -70,6 +74,8 @@ class GammaSettings(BaseModel):
     use_events_endpoint: bool = True
     related_tags: bool = False
     request_interval_ms: int = 0
+    tags_cache_sec: int = 600
+    retry_max_attempts: int = 5
 
 
 class ClobSettings(BaseModel):
@@ -82,6 +88,8 @@ class ClobSettings(BaseModel):
     pong_message: str = "pong"
     reconnect_backoff_sec: int = 5
     reconnect_max_sec: int = 60
+    resync_on_gap: bool = True
+    resync_min_interval_sec: int = 30
 
 
 class StdoutSinkSettings(BaseModel):

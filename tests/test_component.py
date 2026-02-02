@@ -11,9 +11,13 @@ from polymarket_monitor_engine.domain.models import Market
 class FakeFeed:
     def __init__(self) -> None:
         self.subscriptions: list[list[str]] = []
+        self.resubscriptions: list[list[str]] = []
 
     async def subscribe(self, token_ids: list[str]) -> None:
         self.subscriptions.append(token_ids)
+
+    async def resubscribe(self, token_ids: list[str]) -> None:
+        self.resubscriptions.append(token_ids)
 
     async def messages(self):
         if False:  # pragma: no cover
@@ -54,6 +58,10 @@ async def test_handle_refresh_emits_subscription_and_candidates() -> None:
         big_volume_1m_usd=1000.0,
         big_wall_size=None,
         cooldown_sec=0,
+        major_change_pct=0.0,
+        major_change_window_sec=60,
+        major_change_min_notional=0.0,
+        major_change_source="trade",
     )
 
     component = PolymarketComponent(
@@ -64,6 +72,8 @@ async def test_handle_refresh_emits_subscription_and_candidates() -> None:
         sink=sink,
         clock=clock,
         detector=detector,
+        resync_on_gap=False,
+        resync_min_interval_sec=30,
     )
 
     markets_by_category = {
@@ -98,6 +108,10 @@ async def test_emit_feed_lifecycle_maps_payload() -> None:
         big_volume_1m_usd=1000.0,
         big_wall_size=None,
         cooldown_sec=0,
+        major_change_pct=0.0,
+        major_change_window_sec=60,
+        major_change_min_notional=0.0,
+        major_change_source="trade",
     )
     component = PolymarketComponent(
         categories=["finance"],
@@ -107,6 +121,8 @@ async def test_emit_feed_lifecycle_maps_payload() -> None:
         sink=sink,
         clock=clock,
         detector=detector,
+        resync_on_gap=False,
+        resync_min_interval_sec=30,
     )
 
     payload = {

@@ -16,6 +16,7 @@ def test_parse_market_and_outcomes() -> None:
         "endDateIso": "2024-01-01T00:00:00Z",
         "liquidityUSD": "12.5",
         "volume24h": "3.2",
+        "enableOrderBook": True,
         "clobTokenIds": '["t1", "t2"]',
         "outcomes": '[{"token_id":"t3","side":"YES"}]',
         "tokens": [{"asset_id": "t4", "side": "NO"}],
@@ -29,6 +30,7 @@ def test_parse_market_and_outcomes() -> None:
     assert market.end_ts == 1_704_067_200_000
     assert market.liquidity == 12.5
     assert market.volume_24h == 3.2
+    assert market.enable_orderbook is True
     assert set(market.token_ids) == {"t1", "t2", "t3", "t4"}
 
 
@@ -58,6 +60,8 @@ async def test_list_tags_paginates() -> None:
         use_events_endpoint=True,
         related_tags=False,
         request_interval_ms=0,
+        tags_cache_sec=0,
+        retry_max_attempts=1,
     )
     catalog._client = client
 
@@ -97,6 +101,8 @@ async def test_list_markets_events_endpoint_uses_event_title() -> None:
         use_events_endpoint=True,
         related_tags=True,
         request_interval_ms=0,
+        tags_cache_sec=0,
+        retry_max_attempts=1,
     )
     catalog._client = client
 

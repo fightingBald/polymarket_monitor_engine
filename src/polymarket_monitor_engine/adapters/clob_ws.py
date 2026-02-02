@@ -55,6 +55,13 @@ class ClobWebSocketFeed:
             return
         await self._apply_subscription_changes()
 
+    async def resubscribe(self, token_ids: list[str]) -> None:
+        self._desired_ids = set(token_ids)
+        if self._is_closed():
+            return
+        await self._send_initial_subscription(sorted(self._desired_ids))
+        self._subscribed_ids = set(self._desired_ids)
+
     async def messages(self) -> AsyncIterator[FeedMessage]:
         backoff = self._reconnect_backoff_sec
         while not self._stop.is_set():

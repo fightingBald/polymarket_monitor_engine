@@ -67,9 +67,19 @@ Key knobs:
 
 - `gamma.use_events_endpoint`: use `/events` discovery (recommended).
 - `gamma.request_interval_ms`: spacing between page requests.
+- `gamma.tags_cache_sec`: cache TTL for `/tags` to reduce load.
+- `gamma.retry_max_attempts`: retries for 429/5xx or transient network errors.
 - `clob.custom_feature_enabled`: enable extended events.
 - `clob.initial_dump`: snapshot on subscribe.
 - `clob.ping_interval_sec`: app-level heartbeat (set null to disable).
+- `clob.resync_on_gap`: resubscribe when sequence gaps are detected (if seq present).
+- `clob.resync_min_interval_sec`: throttle resubscribe spam.
+- `signals.major_change_pct`: % change threshold for major move alerts.
+- `signals.major_change_window_sec`: time window for major move detection.
+- `signals.major_change_min_notional`: minimum notional (trade-only) to trigger.
+- `signals.major_change_source`: `trade` | `book` | `any`.
+
+Note: `major_change_min_notional` only applies to `trade`/`any` sources because book updates do not include notional.
 
 ## Commands
 
@@ -98,3 +108,4 @@ Checks DNS + Gamma + WebSocket reachability and config presence.
 
 - DomainEvents are JSON and published to Redis channel `polymarket.events` by default.
 - No API key is required for the Gamma/CLOB public endpoints.
+- Markets without `enableOrderBook=true` are skipped from subscriptions.

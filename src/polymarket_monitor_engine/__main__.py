@@ -37,6 +37,8 @@ def build_component(settings: Settings) -> PolymarketComponent:
         use_events_endpoint=settings.gamma.use_events_endpoint,
         related_tags=settings.gamma.related_tags,
         request_interval_ms=settings.gamma.request_interval_ms,
+        tags_cache_sec=settings.gamma.tags_cache_sec,
+        retry_max_attempts=settings.gamma.retry_max_attempts,
     )
 
     feed = ClobWebSocketFeed(
@@ -87,6 +89,10 @@ def build_component(settings: Settings) -> PolymarketComponent:
         big_volume_1m_usd=settings.signals.big_volume_1m_usd,
         big_wall_size=settings.signals.big_wall_size,
         cooldown_sec=settings.signals.cooldown_sec,
+        major_change_pct=settings.signals.major_change_pct,
+        major_change_window_sec=settings.signals.major_change_window_sec,
+        major_change_min_notional=settings.signals.major_change_min_notional,
+        major_change_source=settings.signals.major_change_source,
     )
 
     return PolymarketComponent(
@@ -97,6 +103,8 @@ def build_component(settings: Settings) -> PolymarketComponent:
         sink=sink,
         clock=clock,
         detector=detector,
+        resync_on_gap=settings.clob.resync_on_gap,
+        resync_min_interval_sec=settings.clob.resync_min_interval_sec,
     )
 
 

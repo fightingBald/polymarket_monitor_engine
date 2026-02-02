@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 import structlog
+from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from polymarket_monitor_engine.domain.models import Market, OutcomeToken, Tag
 
@@ -23,14 +25,27 @@ class GammaHttpCatalog:
         use_events_endpoint: bool,
         related_tags: bool,
         request_interval_ms: int,
+        tags_cache_sec: int,
+        retry_max_attempts: int,
     ) -> None:
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout_sec)
         self._page_size = page_size
         self._use_events_endpoint = use_events_endpoint
         self._related_tags = related_tags
         self._request_interval_ms = request_interval_ms
+        self._tags_cache_sec = tags_cache_sec
+        self._retry_max_attempts = retry_max_attempts
+        self._tags_cache: list[Tag] | None = None
+        self._tags_cache_ts: float | None = None
 
     async def list_tags(self) -> list[Tag]:
+        if (
+            self._tags_cache
+            and self._tags_cache_ts is not None
+            and (time.time() - self._tags_cache_ts) < self._tags_cache_sec
+        ):
+            return self._tags_cache
+
         items = await self._paginate("/tags", {})
         parsed: list[Tag] = []
         for raw in items:
@@ -45,6 +60,8 @@ class GammaHttpCatalog:
                     raw=raw or None,
                 )
             )
+        self._tags_cache = parsed
+        self._tags_cache_ts = time.time()
         return parsed
 
     async def list_markets(
@@ -97,9 +114,7 @@ class GammaHttpCatalog:
             query["limit"] = limit
             query["offset"] = offset
 
-            resp = await self._client.get(path, params=query)
-            resp.raise_for_status()
-            payload = resp.json()
+            payload = await self._request_json(path, query)
             items = self._extract_items(payload)
             collected.extend(items)
 
@@ -129,6 +144,33 @@ class GammaHttpCatalog:
             return
         await asyncio.sleep(self._request_interval_ms / 1000.0)
 
+    async def _request_json(self, path: str, params: dict[str, Any]) -> Any:
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(self._retry_max_attempts),
+            wait=wait_exponential_jitter(initial=0.5, max=5),
+            retry=retry_if_exception(self._is_retryable_http_error),
+            reraise=True,
+        ):
+            with attempt:
+                resp = await self._client.get(path, params=params)
+                if resp.status_code == 429 or 500 <= resp.status_code < 600:
+                    raise httpx.HTTPStatusError(
+                        "Retryable HTTP status",
+                        request=resp.request,
+                        response=resp,
+                    )
+                resp.raise_for_status()
+                return resp.json()
+
+        return None
+
+    @staticmethod
+    def _is_retryable_http_error(exc: BaseException) -> bool:
+        if isinstance(exc, httpx.HTTPStatusError):
+            status = exc.response.status_code
+            return status == 429 or 500 <= status < 600
+        return isinstance(exc, httpx.RequestError)
+
     @staticmethod
     def _extract_markets_from_event(event: dict[str, Any]) -> list[Market]:
         markets_raw = event.get("markets") or []
@@ -156,6 +198,12 @@ class GammaHttpCatalog:
         active = GammaHttpCatalog._to_bool(raw.get("active"), default=True)
         closed = GammaHttpCatalog._to_bool(raw.get("closed"), default=False)
         resolved = GammaHttpCatalog._to_bool(raw.get("resolved"), default=False)
+        enable_orderbook_raw = raw.get("enableOrderBook") or raw.get("enable_orderbook")
+        enable_orderbook = (
+            None
+            if enable_orderbook_raw is None
+            else GammaHttpCatalog._to_bool(enable_orderbook_raw, default=True)
+        )
         end_ts = GammaHttpCatalog._parse_end_ts(
             raw.get("end_ts") or raw.get("endDate") or raw.get("endDateIso")
         )
@@ -177,6 +225,7 @@ class GammaHttpCatalog:
         return Market(
             market_id=market_id,
             question=question,
+            enable_orderbook=enable_orderbook,
             active=active,
             closed=closed,
             resolved=resolved,

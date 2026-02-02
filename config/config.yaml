@@ -17,6 +17,10 @@ signals:
   big_volume_1m_usd: 25000.0
   big_wall_size: null
   cooldown_sec: 120
+  major_change_pct: 5.0
+  major_change_window_sec: 60
+  major_change_min_notional: 0.0
+  major_change_source: "trade"
 
 rolling:
   enabled: true
@@ -30,6 +34,8 @@ gamma:
   use_events_endpoint: true
   related_tags: false
   request_interval_ms: 0
+  tags_cache_sec: 600
+  retry_max_attempts: 5
 
 clob:
   ws_url: "wss://ws-subscriptions-clob.polymarket.com/ws/market"
@@ -41,6 +47,8 @@ clob:
   pong_message: "pong"
   reconnect_backoff_sec: 5
   reconnect_max_sec: 60
+  resync_on_gap: true
+  resync_min_interval_sec: 30
 
 sinks:
   mode: "best_effort"

@@ -7,6 +7,7 @@ import structlog
 
 from polymarket_monitor_engine.application.discovery import MarketDiscovery
 from polymarket_monitor_engine.application.monitor import SignalDetector
+from polymarket_monitor_engine.application.orderbook import OrderBookRegistry, OrderBookUpdateResult
 from polymarket_monitor_engine.application.parsers import parse_book, parse_trade
 from polymarket_monitor_engine.application.types import TokenMeta
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
@@ -30,6 +31,8 @@ class PolymarketComponent:
         sink: EventSinkPort,
         clock: ClockPort,
         detector: SignalDetector,
+        resync_on_gap: bool,
+        resync_min_interval_sec: int,
     ) -> None:
         self._categories = categories
         self._refresh_interval_sec = refresh_interval_sec
@@ -38,6 +41,10 @@ class PolymarketComponent:
         self._sink = sink
         self._clock = clock
         self._detector = detector
+        self._orderbooks = OrderBookRegistry()
+        self._resync_on_gap = resync_on_gap
+        self._resync_min_interval_ms = resync_min_interval_sec * 1000
+        self._last_resync_ms = 0
         self._token_meta: dict[str, TokenMeta] = {}
         self._markets_by_id: dict[str, Market] = {}
         self._token_ids: list[str] = []
@@ -72,11 +79,20 @@ class PolymarketComponent:
             elif message.kind == "book":
                 book = parse_book(message.payload)
                 if book:
-                    await self._detector.handle_book(book)
+                    result = self._orderbooks.apply_snapshot(book, message.payload)
+                    await self._handle_resync(result)
+                    if not result.resync_needed:
+                        await self._detector.handle_book(book)
             elif message.kind == "market_lifecycle":
                 await self._emit_feed_lifecycle(message.payload)
             elif message.kind in {"price_change", "best_bid_ask"}:
-                logger.debug("feed_price_update", kind=message.kind)
+                if message.kind == "price_change":
+                    result = self._orderbooks.apply_price_change(message.payload)
+                    await self._handle_resync(result)
+                    if result.snapshot is not None and not result.resync_needed:
+                        await self._detector.handle_book(result.snapshot)
+                else:
+                    logger.debug("feed_price_update", kind=message.kind)
             else:
                 logger.debug("feed_message_ignored", payload=message.payload)
 
@@ -246,6 +262,29 @@ class PolymarketComponent:
             raw=payload,
         )
         await self._sink.publish(event)
+
+    async def _handle_resync(self, result: OrderBookUpdateResult | None) -> None:
+        if not result or not result.resync_needed or not self._resync_on_gap:
+            return
+        if not self._token_ids:
+            return
+        now_ms = self._clock.now_ms()
+        if now_ms - self._last_resync_ms < self._resync_min_interval_ms:
+            logger.warning(
+                "orderbook_resync_throttled",
+                token_id=result.token_id,
+                expected_seq=result.expected_seq,
+                received_seq=result.received_seq,
+            )
+            return
+        self._last_resync_ms = now_ms
+        logger.warning(
+            "orderbook_resync",
+            token_id=result.token_id,
+            expected_seq=result.expected_seq,
+            received_seq=result.received_seq,
+        )
+        await self._feed.resubscribe(self._token_ids)
 
 
 def _normalize_side(value: str | None) -> str | None:
