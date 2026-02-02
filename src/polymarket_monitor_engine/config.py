@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from deepmerge import Merger
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -168,14 +169,11 @@ class Settings(BaseSettings):
     sinks: SinkSettings = Field(default_factory=SinkSettings)
 
 
-def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    merged = dict(base)
-    for key, value in override.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
+_MERGER = Merger([(dict, ["merge"]), (list, ["override"])], ["override"], ["override"])
+
+
+def _merge_settings(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    return _MERGER.merge(dict(base), override)
 
 
 def load_settings(path: Path | None) -> Settings:
@@ -192,7 +190,7 @@ def load_settings(path: Path | None) -> Settings:
     _sanitize_env_overrides()
     env_settings = Settings()
     overrides = env_settings.model_dump(exclude_unset=True)
-    merged = _deep_merge(file_data, overrides)
+    merged = _merge_settings(file_data, overrides)
     return Settings.model_validate(merged)
 
 
