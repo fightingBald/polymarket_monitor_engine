@@ -133,6 +133,7 @@ async def test_list_markets_events_endpoint_uses_event_title() -> None:
 async def test_list_markets_events_limit_per_category() -> None:
     seen_offsets: list[int] = []
     seen_limits: list[int] = []
+    total_items = 5
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path != "/events":
@@ -142,7 +143,7 @@ async def test_list_markets_events_limit_per_category() -> None:
         seen_offsets.append(offset)
         seen_limits.append(limit)
         items = []
-        for idx in range(offset, offset + limit):
+        for idx in range(offset, min(offset + limit, total_items)):
             items.append(
                 {
                     "id": f"e{idx}",
@@ -166,6 +167,7 @@ async def test_list_markets_events_limit_per_category() -> None:
         tags_cache_sec=0,
         retry_max_attempts=1,
         events_limit_per_category=3,
+        events_sort_primary=None,
     )
     catalog._client = client
 
@@ -173,8 +175,223 @@ async def test_list_markets_events_limit_per_category() -> None:
     await client.aclose()
 
     assert [market.market_id for market in markets] == ["m0", "m1", "m2"]
-    assert seen_offsets == [0, 2]
-    assert seen_limits == [2, 1]
+    assert seen_offsets == [0, 2, 4]
+    assert seen_limits == [2, 2, 2]
+
+
+@pytest.mark.asyncio
+async def test_list_markets_events_sort_primary_secondary() -> None:
+    seen_params = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path != "/events":
+            return httpx.Response(404)
+        seen_params.update(request.url.params)
+        payload = {
+            "data": [
+                {
+                    "id": "e1",
+                    "title": "Event 1",
+                    "volume24hr": 100,
+                    "liquidity": 50,
+                    "markets": [
+                        {"conditionId": "m1", "question": "", "active": True, "closed": False}
+                    ],
+                },
+                {
+                    "id": "e2",
+                    "title": "Event 2",
+                    "volume24hr": 100,
+                    "liquidity": 200,
+                    "markets": [
+                        {"conditionId": "m2", "question": "", "active": True, "closed": False}
+                    ],
+                },
+                {
+                    "id": "e3",
+                    "title": "Event 3",
+                    "volume24hr": 90,
+                    "liquidity": 500,
+                    "markets": [
+                        {"conditionId": "m3", "question": "", "active": True, "closed": False}
+                    ],
+                },
+            ]
+        }
+        return httpx.Response(200, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(base_url="https://example.com", transport=transport)
+    catalog = GammaHttpCatalog(
+        base_url="https://example.com",
+        timeout_sec=1,
+        page_size=200,
+        use_events_endpoint=True,
+        related_tags=False,
+        request_interval_ms=0,
+        tags_cache_sec=0,
+        retry_max_attempts=1,
+        events_sort_primary="volume24hr",
+        events_sort_secondary="liquidity",
+        events_sort_desc=True,
+    )
+    catalog._client = client
+
+    markets = await catalog.list_markets(tag_id="tag-1", active=True, closed=False)
+    await client.aclose()
+
+    assert seen_params.get("order") == "volume24hr"
+    assert seen_params.get("ascending") == "false"
+    assert [market.market_id for market in markets] == ["m2", "m1", "m3"]
+
+
+@pytest.mark.asyncio
+async def test_list_markets_filters_active_before_sort_and_limit() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path != "/events":
+            return httpx.Response(404)
+        payload = {
+            "data": [
+                {
+                    "id": "e1",
+                    "title": "Event 1",
+                    "active": True,
+                    "volume24hr": 50,
+                    "liquidity": 10,
+                    "markets": [
+                        {"conditionId": "m1", "question": "", "active": True, "closed": False}
+                    ],
+                },
+                {
+                    "id": "e2",
+                    "title": "Event 2",
+                    "active": False,
+                    "volume24hr": 1000,
+                    "liquidity": 999,
+                    "markets": [
+                        {"conditionId": "m2", "question": "", "active": True, "closed": False}
+                    ],
+                },
+                {
+                    "id": "e3",
+                    "title": "Event 3",
+                    "active": True,
+                    "volume24hr": 50,
+                    "liquidity": 20,
+                    "markets": [
+                        {"conditionId": "m3", "question": "", "active": True, "closed": False}
+                    ],
+                },
+            ]
+        }
+        return httpx.Response(200, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(base_url="https://example.com", transport=transport)
+    catalog = GammaHttpCatalog(
+        base_url="https://example.com",
+        timeout_sec=1,
+        page_size=200,
+        use_events_endpoint=True,
+        related_tags=False,
+        request_interval_ms=0,
+        tags_cache_sec=0,
+        retry_max_attempts=1,
+        events_limit_per_category=2,
+        events_sort_primary="volume24hr",
+        events_sort_secondary="liquidity",
+        events_sort_desc=True,
+    )
+    catalog._client = client
+
+    markets = await catalog.list_markets(tag_id="tag-1", active=True, closed=False)
+    await client.aclose()
+
+    assert [market.market_id for market in markets] == ["m3", "m1"]
+
+
+@pytest.mark.asyncio
+async def test_list_markets_events_sort_aggregates_market_metrics() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path != "/events":
+            return httpx.Response(404)
+        payload = {
+            "data": [
+                {
+                    "id": "e1",
+                    "title": "Event 1",
+                    "markets": [
+                        {
+                            "conditionId": "m1",
+                            "question": "",
+                            "active": True,
+                            "closed": False,
+                            "volume24hr": 60,
+                            "liquidity": 5,
+                        },
+                        {
+                            "conditionId": "m1b",
+                            "question": "",
+                            "active": True,
+                            "closed": False,
+                            "volume24hr": 40,
+                            "liquidity": 5,
+                        },
+                    ],
+                },
+                {
+                    "id": "e2",
+                    "title": "Event 2",
+                    "markets": [
+                        {
+                            "conditionId": "m2",
+                            "question": "",
+                            "active": True,
+                            "closed": False,
+                            "volume24hr": 80,
+                            "liquidityUSD": 100,
+                        }
+                    ],
+                },
+                {
+                    "id": "e3",
+                    "title": "Event 3",
+                    "markets": [
+                        {
+                            "conditionId": "m3",
+                            "question": "",
+                            "active": True,
+                            "closed": False,
+                            "volume24hr": 100,
+                            "liquidity": 1,
+                        }
+                    ],
+                },
+            ]
+        }
+        return httpx.Response(200, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(base_url="https://example.com", transport=transport)
+    catalog = GammaHttpCatalog(
+        base_url="https://example.com",
+        timeout_sec=1,
+        page_size=200,
+        use_events_endpoint=True,
+        related_tags=False,
+        request_interval_ms=0,
+        tags_cache_sec=0,
+        retry_max_attempts=1,
+        events_sort_primary="volume24hr",
+        events_sort_secondary="liquidity",
+        events_sort_desc=True,
+    )
+    catalog._client = client
+
+    markets = await catalog.list_markets(tag_id="tag-1", active=True, closed=False)
+    await client.aclose()
+
+    assert [market.market_id for market in markets] == ["m1", "m1b", "m3", "m2"]
 
 
 @pytest.mark.asyncio

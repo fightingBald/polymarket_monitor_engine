@@ -431,6 +431,15 @@ class PolymarketComponent:
         token_id = str(token_id) if token_id else None
         meta = self._token_meta.get(token_id) if token_id else None
         market = self._markets_by_id.get(market_id) if market_id else None
+        if meta is None and market is None:
+            logger.debug(
+                "market_lifecycle_ignored",
+                reason="untracked",
+                event_type=event_type,
+                market_id=market_id,
+                token_id=token_id,
+            )
+            return
 
         event = DomainEvent(
             event_id=new_event_id(),

@@ -129,6 +129,18 @@ async def test_emit_feed_lifecycle_maps_payload() -> None:
         polling_cooldown_sec=0,
     )
 
+    await component._handle_refresh(
+        {
+            "finance": [
+                Market(
+                    market_id="m1",
+                    question="Hello",
+                    token_ids=["t1"],
+                )
+            ]
+        }
+    )
+    sink.events = []
     payload = {
         "event_type": "new_market",
         "market_id": "m1",
@@ -142,6 +154,49 @@ async def test_emit_feed_lifecycle_maps_payload() -> None:
     event = sink.events[0]
     assert event.event_type == EventType.MARKET_LIFECYCLE
     assert event.metrics["status"] == "new"
+
+
+@pytest.mark.asyncio
+async def test_emit_feed_lifecycle_ignores_untracked_market() -> None:
+    feed = FakeFeed()
+    sink = CaptureSink()
+    clock = FakeClock()
+    detector = SignalDetector(
+        clock=clock,
+        sink=sink,
+        big_trade_usd=1000.0,
+        big_volume_1m_usd=1000.0,
+        big_wall_size=None,
+        cooldown_sec=0,
+        major_change_pct=0.0,
+        major_change_window_sec=60,
+        major_change_min_notional=0.0,
+        major_change_source="trade",
+    )
+    component = PolymarketComponent(
+        categories=["finance"],
+        refresh_interval_sec=60,
+        discovery=None,
+        feed=feed,
+        sink=sink,
+        clock=clock,
+        detector=detector,
+        resync_on_gap=False,
+        resync_min_interval_sec=30,
+        polling_volume_threshold_usd=1000.0,
+        polling_cooldown_sec=0,
+    )
+
+    payload = {
+        "event_type": "market_resolved",
+        "market_id": "m-unknown",
+        "asset_id": "t-unknown",
+        "question": "Nope",
+    }
+
+    await component._emit_feed_lifecycle(payload)
+
+    assert sink.events == []
 
 
 @pytest.mark.asyncio

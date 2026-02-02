@@ -45,7 +45,8 @@ make run-dashboard
 List‑type envs accept CSV (no JSON needed), e.g. `PME__APP__CATEGORIES=finance,politics`.
 `filters.top_k_per_category=0` means **no limit** (monitor as many as possible).
 `rolling.enabled=false` means **don’t collapse by topic** (keeps more markets).
-`gamma.events_limit_per_category=100` caps events per category **before** expanding to markets (keeps WS payload smaller). 🧯
+`gamma.events_limit_per_category=100` caps events per category **after full fetch + active filter + ranking** (volume → liquidity). More API calls, smaller WS payload. 🧯
+`gamma.events_sort_primary/secondary` control event ranking (default: `volume24hr` → `liquidity`). ⚡
 
 Example:
 ```bash
@@ -76,6 +77,7 @@ PME__DASHBOARD__ENABLED=true make run
   - `sinks.discord.aggregate_window_sec`
   - `sinks.discord.aggregate_max_items`
 - On startup, Discord receives a **“connected + monitored markets”** status message.
+- Lifecycle alerts are **only for monitored markets**; `removed` means **removed from monitoring**, not delisted. 🧹
 - Health checks are **not** sent to Discord by default (noise‑free).
 - Category counts are **event-based** (closer to website numbers) and stats include events/markets/tokens.
 

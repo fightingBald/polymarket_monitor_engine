@@ -95,6 +95,9 @@ class GammaSettings(BaseModel):
     page_size: int = 200
     use_events_endpoint: bool = True
     events_limit_per_category: int | None = None
+    events_sort_primary: str = "volume24hr"
+    events_sort_secondary: str = "liquidity"
+    events_sort_desc: bool = True
     related_tags: bool = False
     request_interval_ms: int = 0
     tags_cache_sec: int = 600

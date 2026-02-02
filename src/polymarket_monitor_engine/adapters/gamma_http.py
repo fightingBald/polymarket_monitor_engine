@@ -28,6 +28,9 @@ class GammaHttpCatalog:
         tags_cache_sec: int,
         retry_max_attempts: int,
         events_limit_per_category: int | None = None,
+        events_sort_primary: str | None = "volume24hr",
+        events_sort_secondary: str | None = "liquidity",
+        events_sort_desc: bool = True,
     ) -> None:
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout_sec)
         self._page_size = page_size
@@ -37,6 +40,9 @@ class GammaHttpCatalog:
         self._tags_cache_sec = tags_cache_sec
         self._retry_max_attempts = retry_max_attempts
         self._events_limit_per_category = self._normalize_limit(events_limit_per_category)
+        self._events_sort_primary = self._normalize_sort_key(events_sort_primary)
+        self._events_sort_secondary = self._normalize_sort_key(events_sort_secondary)
+        self._events_sort_desc = bool(events_sort_desc)
         self._tags_cache: TTLCache[str, list[Tag]] = TTLCache(
             maxsize=1,
             ttl=max(1, int(tags_cache_sec)),
@@ -82,15 +88,22 @@ class GammaHttpCatalog:
             }
             if self._related_tags:
                 params["related_tags"] = "true"
+            if self._events_sort_primary:
+                params["order"] = self._events_sort_primary
+                params["ascending"] = str(not self._events_sort_desc).lower()
             events = await self._paginate(
                 "/events",
                 params,
-                max_items=self._events_limit_per_category,
             )
+            events = [event for event in events if self._event_is_active(event)]
+            events = self._sort_events(events)
+            if (
+                self._events_limit_per_category is not None
+                and len(events) > self._events_limit_per_category
+            ):
+                events = events[: self._events_limit_per_category]
             markets: list[Market] = []
             for event in events:
-                if not self._event_is_active(event):
-                    continue
                 markets.extend(self._extract_markets_from_event(event))
             return [
                 m
@@ -243,6 +256,89 @@ class GammaHttpCatalog:
         if limit <= 0:
             return None
         return limit
+
+    @staticmethod
+    def _normalize_sort_key(value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    def _sort_events(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not self._events_sort_primary:
+            return events
+        primary = self._events_sort_primary
+        secondary = self._events_sort_secondary
+        reverse = self._events_sort_desc
+
+        def sort_key(event: dict[str, Any]) -> tuple[float, float]:
+            primary_value = self._event_metric(event, primary)
+            secondary_value = self._event_metric(event, secondary)
+            return (primary_value, secondary_value)
+
+        sorted_events = sorted(events, key=sort_key, reverse=reverse)
+        logger.info(
+            "gamma_events_sort",
+            primary=primary,
+            secondary=secondary,
+            desc=reverse,
+            count=len(sorted_events),
+        )
+        return sorted_events
+
+    @staticmethod
+    def _event_metric(event: dict[str, Any], key: str | None) -> float:
+        if not key:
+            return 0.0
+        key_norm = key.strip().lower()
+        if key_norm in {"volume24hr", "volume24h", "volume_24h", "volume24hrclob"}:
+            return GammaHttpCatalog._event_volume_24h(event)
+        if key_norm in {"liquidity", "liquidityusd", "liquiditynum"}:
+            return GammaHttpCatalog._event_liquidity(event)
+        return 0.0
+
+    @staticmethod
+    def _event_volume_24h(event: dict[str, Any]) -> float:
+        for key in ("volume_24h", "volume24h", "volume24hr", "volume24hrClob"):
+            value = GammaHttpCatalog._to_float(event.get(key))
+            if value is not None:
+                return value
+        return GammaHttpCatalog._sum_market_metric(event, metric="volume")
+
+    @staticmethod
+    def _event_liquidity(event: dict[str, Any]) -> float:
+        for key in ("liquidity", "liquidityUSD", "liquidityNum"):
+            value = GammaHttpCatalog._to_float(event.get(key))
+            if value is not None:
+                return value
+        return GammaHttpCatalog._sum_market_metric(event, metric="liquidity")
+
+    @staticmethod
+    def _sum_market_metric(event: dict[str, Any], metric: str) -> float:
+        markets_raw = event.get("markets") or []
+        if not isinstance(markets_raw, list):
+            return 0.0
+        total = 0.0
+        for item in markets_raw:
+            if not isinstance(item, dict):
+                continue
+            if metric == "volume":
+                value = GammaHttpCatalog._to_float(
+                    item.get("volume_24h")
+                    or item.get("volume24h")
+                    or item.get("volume24hr")
+                    or item.get("volume24hrClob")
+                )
+            elif metric == "liquidity":
+                value = GammaHttpCatalog._to_float(
+                    item.get("liquidity") or item.get("liquidityUSD") or item.get("liquidityNum")
+                )
+            else:
+                value = None
+            if value is None:
+                continue
+            total += value
+        return total
 
     @staticmethod
     def _extract_markets_from_event(event: dict[str, Any]) -> list[Market]:

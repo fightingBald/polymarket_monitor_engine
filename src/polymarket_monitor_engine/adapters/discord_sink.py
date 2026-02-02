@@ -180,6 +180,7 @@ def _build_embed(event: DomainEvent) -> dict | None:
 
     if event.event_type == EventType.MARKET_LIFECYCLE:
         status = str(event.metrics.get("status", "unknown"))
+        status_label = status
         end_ts = event.metrics.get("end_ts")
         title = "🔁 盘口状态变更"
         color = 0x3498DB
@@ -187,10 +188,11 @@ def _build_embed(event: DomainEvent) -> dict | None:
             title = "🆕 新盘口"
             color = 0x2ECC71
         elif status == "removed":
-            title = "🧹 盘口下架"
+            title = "🧹 盘口移出监控"
             color = 0xE67E22
+            status_label = "移出监控"
         fields = [
-            {"name": "状态", "value": status, "inline": True},
+            {"name": "状态", "value": status_label, "inline": True},
             {"name": "分类", "value": category, "inline": True},
             {"name": "到期", "value": _fmt_end_ts(end_ts), "inline": True},
         ]

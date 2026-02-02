@@ -1,79 +1,153 @@
+# App runtime basics.
 app:
+  # Categories (tag slugs) to monitor.
   categories: ["finance", "geopolitics"]
+  # Discovery refresh interval in seconds.
   refresh_interval_sec: 60
 
+# Logging output and style.
 logging:
+  # Log level (DEBUG/INFO/WARNING/ERROR).
   level: "INFO"
+  # Log styling preset.
   style: "genz"
+  # Print logs to console.
   console: false
+  # Log file path (null to disable file logging).
   file_path: "logs/pme.log"
 
+# Terminal dashboard (TUI).
 dashboard:
+  # Enable the dashboard UI.
   enabled: true
+  # Refresh rate in Hz.
   refresh_hz: 2.0
+  # Max rows to render.
   max_rows: 50
+  # Sort key: activity/vol_1m/last_trade/updated/category/title.
   sort_by: "activity"
+  # Sort descending if true.
   sort_desc: true
 
+# Market filtering rules.
 filters:
+  # Max markets per category (0 = unlimited).
   top_k_per_category: 0
+  # Sort keys for hot markets ranking.
   hot_sort: ["liquidity", "volume_24h"]
+  # Minimum liquidity to keep a market.
   min_liquidity: 0.0
+  # Keyword allowlist (match on question text).
   keyword_allow: []
+  # Keyword blocklist (match on question text).
   keyword_block: []
 
+# Global top markets feed.
 top:
+  # Enable the top feed category.
   enabled: false
+  # Max markets to keep in top feed.
   limit: 30
+  # Server-side order field for /events.
   order: "volume24hr"
+  # Sort ascending if true.
   ascending: false
+  # Only include featured events if true.
   featured_only: false
+  # Category name for top feed markets.
   category_name: "top"
 
+# Signal thresholds and rules.
 signals:
+  # Big trade USD threshold.
   big_trade_usd: 10000.0
+  # 1-minute volume spike threshold (USD).
   big_volume_1m_usd: 25000.0
+  # Orderbook wall size threshold.
   big_wall_size: null
+  # Cooldown between repeated signals.
   cooldown_sec: 120
+  # Major price change percent threshold.
   major_change_pct: 5.0
+  # Major change lookback window (sec).
   major_change_window_sec: 60
+  # Minimum notional for major change signal.
   major_change_min_notional: 0.0
+  # Source for major change (trade/book).
   major_change_source: "trade"
 
+# Rolling selection by topic.
 rolling:
+  # Enable topic-based collapsing.
   enabled: false
+  # Sort priority within a topic.
   primary_selection_priority: ["liquidity", "volume_24h", "end_ts"]
+  # Max markets per topic.
   max_markets_per_topic: 1
 
+# Gamma API (market catalog).
 gamma:
+  # Base URL for Gamma API.
   base_url: "https://gamma-api.polymarket.com"
+  # HTTP timeout (sec).
   timeout_sec: 10
+  # Pagination page size.
   page_size: 200
+  # Use /events endpoint for tag-based discovery.
   use_events_endpoint: true
+  # Cap events per category after full fetch + active filter + ranking by volume/liquidity.
   events_limit_per_category: 100
+  # Primary event sort field (volume24hr).
+  events_sort_primary: "volume24hr"
+  # Secondary event sort field (liquidity).
+  events_sort_secondary: "liquidity"
+  # Sort descending if true.
+  events_sort_desc: true
+  # Include related tags in /events query.
   related_tags: false
+  # Rate limit: minimum interval between requests (ms).
   request_interval_ms: 0
+  # Tags cache TTL (sec).
   tags_cache_sec: 600
+  # Max retry attempts for HTTP errors.
   retry_max_attempts: 5
 
+# CLOB websocket feed.
 clob:
+  # WebSocket URL.
   ws_url: "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+  # Subscription channel.
   channel: "market"
+  # Enable custom feature flag.
   custom_feature_enabled: true
+  # Request initial snapshot.
   initial_dump: true
+  # Max frame size (bytes).
   max_frame_bytes: 1000000
+  # Max message size (bytes).
   max_message_bytes: 2000000
+  # Ping interval (sec).
   ping_interval_sec: 10
+  # Ping payload.
   ping_message: "PING"
+  # Pong payload.
   pong_message: "pong"
+  # Reconnect backoff base (sec).
   reconnect_backoff_sec: 5
+  # Reconnect backoff max (sec).
   reconnect_max_sec: 60
+  # Resync on sequence gap.
   resync_on_gap: true
+  # Minimum interval between resyncs (sec).
   resync_min_interval_sec: 30
 
+# Event sinks (outputs).
 sinks:
+  # Delivery mode: best_effort or strict.
   mode: "best_effort"
+  # Required sinks in strict mode.
   required_sinks: []
+  # Per-event routing to sinks.
   routes:
     CandidateSelected: ["stdout", "redis"]
     SubscriptionChanged: ["stdout", "redis"]
@@ -83,17 +157,28 @@ sinks:
     PriceSignal: ["stdout", "redis"]
     MarketLifecycle: ["stdout", "redis", "discord"]
     HealthEvent: ["stdout", "redis"]
+  # Event payload transform: full or compact.
   transform: "full"
   stdout:
+    # Enable stdout sink.
     enabled: false
   redis:
+    # Enable Redis sink.
     enabled: false
+    # Redis connection URL.
     url: "redis://localhost:6379/0"
+    # Redis pubsub channel.
     channel: "polymarket.events"
   discord:
+    # Enable Discord webhook sink.
     enabled: true
+    # Max retries for webhook posting.
     max_retries: 5
+    # HTTP timeout (sec).
     timeout_sec: 10
+    # Aggregate multi-outcome signals.
     aggregate_multi_outcome: true
+    # Aggregate window (sec).
     aggregate_window_sec: 2.0
+    # Max items in aggregate embed.
     aggregate_max_items: 5
