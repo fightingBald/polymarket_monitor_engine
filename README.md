@@ -21,7 +21,7 @@ Hexagonal layout with clear boundaries:
 
 ## Quickstart (local, uv + venv)
 
-1) Install `uv` (e.g. `brew install uv` or `pipx install uv`).
+1) Install `uv` (e.g. `brew install uv` or `pipx install uv`). `make bootstrap` will auto-install it in CI if missing.
 2) Copy config:
 
 ```bash
