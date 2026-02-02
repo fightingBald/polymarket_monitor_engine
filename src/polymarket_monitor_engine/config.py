@@ -94,6 +94,7 @@ class GammaSettings(BaseModel):
     timeout_sec: float = 10.0
     page_size: int = 200
     use_events_endpoint: bool = True
+    events_limit_per_category: int | None = None
     related_tags: bool = False
     request_interval_ms: int = 0
     tags_cache_sec: int = 600
@@ -106,6 +107,7 @@ class ClobSettings(BaseModel):
     custom_feature_enabled: bool = True
     initial_dump: bool = True
     max_frame_bytes: int = 1_000_000
+    max_message_bytes: int | None = 2_000_000
     ping_interval_sec: int | None = 10
     ping_message: str = "PING"
     pong_message: str = "pong"

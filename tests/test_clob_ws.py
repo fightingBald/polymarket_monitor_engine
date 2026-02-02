@@ -4,6 +4,7 @@ import asyncio
 import json
 
 import pytest
+import websockets
 from websockets.protocol import State
 
 from polymarket_monitor_engine.adapters.clob_ws import ClobWebSocketFeed
@@ -119,3 +120,32 @@ async def test_clob_ws_subscribe_chunks_payload() -> None:
     for raw in fake_ws.sent:
         raw_bytes = raw if isinstance(raw, bytes) else raw.encode("utf-8")
         assert len(raw_bytes) <= max_frame_bytes
+
+
+@pytest.mark.asyncio
+async def test_clob_ws_connect_uses_max_message_bytes(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_connect(url: str, **kwargs: object):
+        captured["url"] = url
+        captured.update(kwargs)
+        return FakeWebSocket()
+
+    monkeypatch.setattr(websockets, "connect", fake_connect)
+
+    feed = ClobWebSocketFeed(
+        ws_url="ws://example/ws/market",
+        channel="market",
+        custom_feature_enabled=True,
+        initial_dump=True,
+        ping_interval_sec=None,
+        ping_message="PING",
+        pong_message="pong",
+        reconnect_backoff_sec=1,
+        reconnect_max_sec=2,
+        max_message_bytes=2_000_000,
+    )
+    await feed.connect()
+
+    assert captured["url"] == "ws://example/ws/market"
+    assert captured["max_size"] == 2_000_000

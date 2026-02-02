@@ -130,6 +130,54 @@ async def test_list_markets_events_endpoint_uses_event_title() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_markets_events_limit_per_category() -> None:
+    seen_offsets: list[int] = []
+    seen_limits: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path != "/events":
+            return httpx.Response(404)
+        offset = int(request.url.params.get("offset", 0))
+        limit = int(request.url.params.get("limit", 2))
+        seen_offsets.append(offset)
+        seen_limits.append(limit)
+        items = []
+        for idx in range(offset, offset + limit):
+            items.append(
+                {
+                    "id": f"e{idx}",
+                    "title": f"Event {idx}",
+                    "markets": [
+                        {"conditionId": f"m{idx}", "question": "", "active": True, "closed": False}
+                    ],
+                }
+            )
+        return httpx.Response(200, json={"data": items})
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(base_url="https://example.com", transport=transport)
+    catalog = GammaHttpCatalog(
+        base_url="https://example.com",
+        timeout_sec=1,
+        page_size=2,
+        use_events_endpoint=True,
+        related_tags=False,
+        request_interval_ms=0,
+        tags_cache_sec=0,
+        retry_max_attempts=1,
+        events_limit_per_category=3,
+    )
+    catalog._client = client
+
+    markets = await catalog.list_markets(tag_id="tag-1", active=True, closed=False)
+    await client.aclose()
+
+    assert [market.market_id for market in markets] == ["m0", "m1", "m2"]
+    assert seen_offsets == [0, 2]
+    assert seen_limits == [2, 1]
+
+
+@pytest.mark.asyncio
 async def test_list_top_markets_uses_events_params() -> None:
     seen_params = {}
 

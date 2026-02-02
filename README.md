@@ -45,6 +45,7 @@ make run-dashboard
 List‑type envs accept CSV (no JSON needed), e.g. `PME__APP__CATEGORIES=finance,politics`.
 `filters.top_k_per_category=0` means **no limit** (monitor as many as possible).
 `rolling.enabled=false` means **don’t collapse by topic** (keeps more markets).
+`gamma.events_limit_per_category=100` caps events per category **before** expanding to markets (keeps WS payload smaller). 🧯
 
 Example:
 ```bash
@@ -119,7 +120,7 @@ make diagnose
 
 - No API key required for public Gamma/CLOB endpoints.
 - `enableOrderBook=false` markets are **displayed** but not subscribed; they still trigger **refresh‑based volume alerts** (`web_volume_spike`).
-- WS 订阅会按 `clob.max_frame_bytes` 自动分包，避免 `1009 message too big` 掉线翻车。🧱
+- WS 发包会按 `clob.max_frame_bytes` 自动分包；如果还爆 `1009 message too big`，把 `clob.max_message_bytes` 调大或关 `clob.initial_dump`。🧱
 - Uses `uvloop` when available for faster async.
 - Gamma rate limiting is handled by `aiolimiter`.
 - Config merge uses `deepmerge` (lists override instead of append).

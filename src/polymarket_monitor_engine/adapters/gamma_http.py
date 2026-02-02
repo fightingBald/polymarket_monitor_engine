@@ -27,6 +27,7 @@ class GammaHttpCatalog:
         request_interval_ms: int,
         tags_cache_sec: int,
         retry_max_attempts: int,
+        events_limit_per_category: int | None = None,
     ) -> None:
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout_sec)
         self._page_size = page_size
@@ -35,6 +36,7 @@ class GammaHttpCatalog:
         self._request_interval_ms = request_interval_ms
         self._tags_cache_sec = tags_cache_sec
         self._retry_max_attempts = retry_max_attempts
+        self._events_limit_per_category = self._normalize_limit(events_limit_per_category)
         self._tags_cache: TTLCache[str, list[Tag]] = TTLCache(
             maxsize=1,
             ttl=max(1, int(tags_cache_sec)),
@@ -80,7 +82,11 @@ class GammaHttpCatalog:
             }
             if self._related_tags:
                 params["related_tags"] = "true"
-            events = await self._paginate("/events", params)
+            events = await self._paginate(
+                "/events",
+                params,
+                max_items=self._events_limit_per_category,
+            )
             markets: list[Market] = []
             for event in events:
                 if not self._event_is_active(event):
@@ -138,25 +144,45 @@ class GammaHttpCatalog:
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def _paginate(self, path: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    async def _paginate(
+        self,
+        path: str,
+        params: dict[str, Any],
+        max_items: int | None = None,
+    ) -> list[dict[str, Any]]:
         collected: list[dict[str, Any]] = []
         offset = 0
         limit = int(params.get("limit", self._page_size))
+        max_items = self._normalize_limit(max_items)
 
         while True:
             query = dict(params)
-            query["limit"] = limit
+            page_limit = limit
+            if max_items is not None:
+                remaining = max_items - len(collected)
+                if remaining <= 0:
+                    break
+                page_limit = min(page_limit, remaining)
+            if page_limit <= 0:
+                break
+            query["limit"] = page_limit
             query["offset"] = offset
 
             payload = await self._request_json(path, query)
             items = self._extract_items(payload)
             collected.extend(items)
 
-            if not items or len(items) < limit:
+            if not items or len(items) < page_limit:
                 break
-            offset += limit
+            offset += page_limit
 
-        logger.info("gamma_paginate", path=path, count=len(collected))
+        if max_items is not None and len(collected) > max_items:
+            collected = collected[:max_items]
+
+        log_payload = {"path": path, "count": len(collected)}
+        if max_items is not None:
+            log_payload["limit"] = max_items
+        logger.info("gamma_paginate", **log_payload)
         return collected
 
     @staticmethod
@@ -205,6 +231,18 @@ class GammaHttpCatalog:
             status = exc.response.status_code
             return status == 429 or 500 <= status < 600
         return isinstance(exc, httpx.RequestError)
+
+    @staticmethod
+    def _normalize_limit(value: int | None) -> int | None:
+        if value is None:
+            return None
+        try:
+            limit = int(value)
+        except (TypeError, ValueError):
+            return None
+        if limit <= 0:
+            return None
+        return limit
 
     @staticmethod
     def _extract_markets_from_event(event: dict[str, Any]) -> list[Market]:

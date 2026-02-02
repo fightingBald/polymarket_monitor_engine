@@ -50,6 +50,7 @@ gamma:
   timeout_sec: 10
   page_size: 200
   use_events_endpoint: true
+  events_limit_per_category: 100
   related_tags: false
   request_interval_ms: 0
   tags_cache_sec: 600
@@ -61,6 +62,7 @@ clob:
   custom_feature_enabled: true
   initial_dump: true
   max_frame_bytes: 1000000
+  max_message_bytes: 2000000
   ping_interval_sec: 10
   ping_message: "PING"
   pong_message: "pong"

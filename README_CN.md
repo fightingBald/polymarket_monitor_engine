@@ -45,6 +45,7 @@ make run-dashboard
 列表类环境变量支持逗号分隔（不用 JSON），例如 `PME__APP__CATEGORIES=finance,politics`。
 `filters.top_k_per_category=0` 表示**不设上限**（尽量多监控）。
 `rolling.enabled=false` 表示**不按话题合并**（保留更多盘口）。
+`gamma.events_limit_per_category=100` 表示**每分类事件数先限流**，再展开到 markets（WS 订阅更小更稳）。🧯
 
 例子：
 ```bash
@@ -114,6 +115,7 @@ make diagnose
 
 - 不用 API Key。
 - `enableOrderBook=false` 的盘子会显示但不订阅；仍会用刷新间隔的成交量变化触发预警（`web_volume_spike`）。
+- WS 发包会按 `clob.max_frame_bytes` 自动分包；如果还爆 `1009 message too big`，把 `clob.max_message_bytes` 调大或关 `clob.initial_dump`。🧱
 - 有 `uvloop` 就自动启用（更快）。
 - Gamma 限流由 `aiolimiter` 管。
 - 配置合并用 `deepmerge`（list 直接覆盖，不拼接）。

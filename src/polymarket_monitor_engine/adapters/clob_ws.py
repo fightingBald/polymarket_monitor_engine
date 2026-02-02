@@ -28,6 +28,7 @@ class ClobWebSocketFeed:
         reconnect_backoff_sec: int,
         reconnect_max_sec: int,
         max_frame_bytes: int = 1_000_000,
+        max_message_bytes: int | None = 2_000_000,
     ) -> None:
         self._ws_url = ws_url
         self._channel = channel
@@ -39,6 +40,7 @@ class ClobWebSocketFeed:
         self._reconnect_backoff_sec = reconnect_backoff_sec
         self._reconnect_max_sec = reconnect_max_sec
         self._max_frame_bytes = max_frame_bytes
+        self._max_message_bytes = max_message_bytes
         self._ws: websockets.WebSocketClientProtocol | None = None
         self._stop = asyncio.Event()
         self._desired_ids: set[str] = set()
@@ -47,7 +49,11 @@ class ClobWebSocketFeed:
 
     async def connect(self) -> None:
         if self._is_closed():
-            self._ws = await websockets.connect(self._resolve_ws_url(), ping_interval=None)
+            self._ws = await websockets.connect(
+                self._resolve_ws_url(),
+                ping_interval=None,
+                max_size=self._max_message_bytes,
+            )
             self._subscribed_ids.clear()
             logger.info("clob_connected", ws_url=self._resolve_ws_url())
 
