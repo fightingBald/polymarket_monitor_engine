@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 import httpx
 import structlog
+from slugify import slugify
 
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
 
@@ -450,17 +451,10 @@ def _color_for_side(value: str | None) -> int | None:
 def _market_url(market_id: str, market: str) -> str | None:
     if market_id == "n/a":
         return None
-    slug = _slugify(market)
+    slug = slugify(market, lowercase=True)
     if not slug:
         return None
     return f"https://polymarket.com/market/{slug}"
-
-
-def _slugify(text: str) -> str:
-    lower = text.lower()
-    cleaned = "".join(ch if ch.isalnum() or ch.isspace() or ch == "-" else " " for ch in lower)
-    parts = [part for part in cleaned.split() if part]
-    return "-".join(parts)
 
 
 def _summary_major_change(
@@ -529,6 +523,23 @@ def _format_market_list(raw: object, limit: int) -> str:
 def _format_category_counts(raw: object) -> str:
     if not isinstance(raw, list) or not raw:
         return "无"
+    try:
+        import pandas as pd  # lazy import to avoid startup cost when discord is disabled
+    except Exception:
+        return _format_category_counts_fallback(raw)
+
+    frame = pd.DataFrame(raw)
+    if frame.empty or "category" not in frame.columns:
+        return "无"
+    if "event_id" in frame.columns:
+        frame = frame.drop_duplicates(subset=["category", "event_id"])
+    elif "market_id" in frame.columns:
+        frame = frame.drop_duplicates(subset=["category", "market_id"])
+    counts = frame["category"].fillna("n/a").value_counts()
+    return "\n".join(f"{name}: {int(count)}" for name, count in counts.items()) or "无"
+
+
+def _format_category_counts_fallback(raw: list[dict[str, object]]) -> str:
     counts: dict[str, int] = {}
     seen: set[tuple[str, str]] = set()
     for item in raw:
