@@ -80,9 +80,8 @@ class GammaHttpCatalog:
                 params["related_tags"] = "true"
             events = await self._paginate("/events", params)
             markets: list[Market] = []
-            now_ms = int(datetime.now(UTC).timestamp() * 1000)
             for event in events:
-                if not self._event_is_active(event, now_ms):
+                if not self._event_is_active(event):
                     continue
                 markets.extend(self._extract_markets_from_event(event))
             return [
@@ -289,20 +288,15 @@ class GammaHttpCatalog:
         )
 
     @staticmethod
-    def _event_is_active(event: dict[str, Any], now_ms: int) -> bool:
+    def _event_is_active(event: dict[str, Any]) -> bool:
         active = GammaHttpCatalog._to_bool(event.get("active"), default=True)
         closed = GammaHttpCatalog._to_bool(event.get("closed"), default=False)
         archived = GammaHttpCatalog._to_bool(event.get("archived"), default=False)
         if not active or closed or archived:
             return False
-        if GammaHttpCatalog._to_bool(event.get("pendingDeployment"), default=False):
-            return False
-        if GammaHttpCatalog._to_bool(event.get("deploying"), default=False):
-            return False
-        end_ts = GammaHttpCatalog._parse_end_ts(
-            event.get("end_ts") or event.get("endDate") or event.get("endDateIso")
-        )
-        return not (end_ts is not None and end_ts < now_ms)
+        pending = GammaHttpCatalog._to_bool(event.get("pendingDeployment"), default=False)
+        deploying = GammaHttpCatalog._to_bool(event.get("deploying"), default=False)
+        return not (pending or deploying)
 
     @staticmethod
     def _parse_end_ts(value: Any) -> int | None:
