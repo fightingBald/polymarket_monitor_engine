@@ -1,6 +1,7 @@
 # Polymarket Monitor Engine ✨
 
 **One‑liner:** watches Polymarket, detects big moves, and blasts alerts to Discord. 🚨
+<img width="728" height="234" alt="image" src="https://github.com/user-attachments/assets/c411d586-9725-4924-b1f3-d701f5c68c08" />
 
 ## 0) Defaults  ✅
 
