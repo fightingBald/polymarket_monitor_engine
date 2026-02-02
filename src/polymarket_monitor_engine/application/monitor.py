@@ -2,23 +2,22 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque
 
 import structlog
 
+from polymarket_monitor_engine.application.types import TokenMeta
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
 from polymarket_monitor_engine.domain.models import BookSnapshot, TradeTick
 from polymarket_monitor_engine.ports.clock import ClockPort
 from polymarket_monitor_engine.ports.sink import EventSinkPort
 from polymarket_monitor_engine.util.ids import new_event_id
-from polymarket_monitor_engine.application.types import TokenMeta
 
 logger = structlog.get_logger(__name__)
 
 
 @dataclass(slots=True)
 class TradeWindow:
-    entries: Deque[tuple[int, float]]
+    entries: deque[tuple[int, float]]
     total: float = 0.0
 
     def add(self, ts_ms: int, notional: float) -> None:
@@ -53,10 +52,10 @@ class SignalDetector:
 
     def update_registry(self, token_meta: dict[str, TokenMeta]) -> None:
         self._token_meta = token_meta
-        self._windows = {token: window for token, window in self._windows.items() if token in token_meta}
-        self._cooldowns = {
-            key: ts for key, ts in self._cooldowns.items() if key[0] in token_meta
+        self._windows = {
+            token: window for token, window in self._windows.items() if token in token_meta
         }
+        self._cooldowns = {key: ts for key, ts in self._cooldowns.items() if key[0] in token_meta}
 
     async def handle_trade(self, trade: TradeTick) -> None:
         meta = self._token_meta.get(trade.token_id)

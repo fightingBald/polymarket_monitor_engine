@@ -6,5 +6,4 @@ from polymarket_monitor_engine.domain.events import DomainEvent
 
 
 class EventSinkPort(Protocol):
-    async def publish(self, event: DomainEvent) -> None:
-        ...
+    async def publish(self, event: DomainEvent) -> None: ...

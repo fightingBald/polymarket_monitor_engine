@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 import structlog
@@ -46,7 +47,12 @@ class GammaHttpCatalog:
             )
         return parsed
 
-    async def list_markets(self, tag_id: str, active: bool = True, closed: bool = False) -> list[Market]:
+    async def list_markets(
+        self,
+        tag_id: str,
+        active: bool = True,
+        closed: bool = False,
+    ) -> list[Market]:
         if self._use_events_endpoint:
             params = {
                 "tag_id": tag_id,
@@ -128,7 +134,9 @@ class GammaHttpCatalog:
         markets_raw = event.get("markets") or []
         if not isinstance(markets_raw, list):
             return []
-        markets = [GammaHttpCatalog._parse_market(item) for item in markets_raw if isinstance(item, dict)]
+        markets = [
+            GammaHttpCatalog._parse_market(item) for item in markets_raw if isinstance(item, dict)
+        ]
         for market in markets:
             if not market.question:
                 market.question = event.get("title") or event.get("slug") or ""
@@ -192,7 +200,7 @@ class GammaHttpCatalog:
             except ValueError:
                 try:
                     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-                    return int(dt.astimezone(timezone.utc).timestamp() * 1000)
+                    return int(dt.astimezone(UTC).timestamp() * 1000)
                 except ValueError:
                     return None
         return None

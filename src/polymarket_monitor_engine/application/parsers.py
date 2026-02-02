@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from polymarket_monitor_engine.domain.models import BookLevel, BookSnapshot, TradeTick
@@ -37,7 +37,7 @@ def _parse_ts_ms(value: Any) -> int | None:
         except ValueError:
             try:
                 dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-                return int(dt.astimezone(timezone.utc).timestamp() * 1000)
+                return int(dt.astimezone(UTC).timestamp() * 1000)
             except ValueError:
                 return None
     return None
@@ -100,5 +100,5 @@ def parse_book(payload: dict[str, Any]) -> BookSnapshot | None:
     asks = _parse_levels(payload.get("asks") or payload.get("ask") or payload.get("sells"))
     ts_ms = _parse_ts_ms(payload.get("ts_ms") or payload.get("timestamp") or payload.get("ts"))
     if ts_ms is None:
-        ts_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+        ts_ms = int(datetime.now(tz=UTC).timestamp() * 1000)
     return BookSnapshot(token_id=token_id, bids=bids, asks=asks, ts_ms=ts_ms, raw=payload)

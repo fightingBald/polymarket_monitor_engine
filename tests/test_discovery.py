@@ -14,7 +14,12 @@ class FakeCatalog:
     async def list_tags(self) -> list[Tag]:
         return self._tags
 
-    async def list_markets(self, tag_id: str, active: bool = True, closed: bool = False) -> list[Market]:
+    async def list_markets(
+        self,
+        tag_id: str,
+        active: bool = True,
+        closed: bool = False,
+    ) -> list[Market]:
         return self._markets_by_tag.get(tag_id, [])
 
 

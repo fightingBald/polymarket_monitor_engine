@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from polymarket_monitor_engine.application.parsers import parse_book, parse_trade, _parse_ts_ms
+from polymarket_monitor_engine.application.parsers import _parse_ts_ms, parse_book, parse_trade
 
 
 def test_parse_ts_ms_seconds_and_iso() -> None:
     assert _parse_ts_ms(1_700_000_000) == 1_700_000_000_000
 
-    iso = datetime(2024, 1, 1, tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+    iso = datetime(2024, 1, 1, tzinfo=UTC).isoformat().replace("+00:00", "Z")
     assert _parse_ts_ms(iso) == 1_704_067_200_000
 
 

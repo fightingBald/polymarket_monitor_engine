@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import orjson
 import structlog
@@ -165,10 +166,8 @@ class ClobWebSocketFeed:
         if self._ping_task is None:
             return
         self._ping_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await self._ping_task
-        except asyncio.CancelledError:
-            pass
         self._ping_task = None
 
     async def _ping_loop(self) -> None:
@@ -181,10 +180,7 @@ class ClobWebSocketFeed:
             await asyncio.sleep(self._ping_interval_sec)
 
     def _handle_ping(self, raw: str | bytes) -> bool:
-        if isinstance(raw, bytes):
-            text = raw.decode("utf-8", errors="ignore")
-        else:
-            text = raw
+        text = raw.decode("utf-8", errors="ignore") if isinstance(raw, bytes) else raw
         if text.strip().lower() not in {"ping", "pong"}:
             return False
         if self._is_closed():

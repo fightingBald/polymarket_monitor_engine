@@ -34,7 +34,7 @@ async def test_clob_ws_subscribe_and_receive_trade() -> None:
         for _ in range(2):
             try:
                 await asyncio.wait_for(websocket.recv(), timeout=0.2)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 break
             except websockets.ConnectionClosed:
                 break

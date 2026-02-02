@@ -10,7 +10,7 @@ from polymarket_monitor_engine.application.monitor import SignalDetector
 from polymarket_monitor_engine.application.parsers import parse_book, parse_trade
 from polymarket_monitor_engine.application.types import TokenMeta
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
-from polymarket_monitor_engine.domain.models import Market, OutcomeToken
+from polymarket_monitor_engine.domain.models import Market
 from polymarket_monitor_engine.domain.selection import normalize_topic
 from polymarket_monitor_engine.ports.clock import ClockPort
 from polymarket_monitor_engine.ports.feed import FeedPort
@@ -103,7 +103,10 @@ class PolymarketComponent:
         self._token_meta = token_meta
         self._markets_by_id = new_markets
 
-    def _build_token_meta(self, markets_by_category: dict[str, list[Market]]) -> dict[str, TokenMeta]:
+    def _build_token_meta(
+        self,
+        markets_by_category: dict[str, list[Market]],
+    ) -> dict[str, TokenMeta]:
         mapping: dict[str, TokenMeta] = {}
         for category, markets in markets_by_category.items():
             for market in markets:
@@ -234,7 +237,9 @@ class PolymarketComponent:
             title=(
                 meta.title
                 if meta
-                else (market.question if market else payload.get("question") or payload.get("title"))
+                else (
+                    market.question if market else payload.get("question") or payload.get("title")
+                )
             ),
             topic_key=(meta.topic_key if meta else (market.topic_key if market else None)),
             metrics={"status": status},
