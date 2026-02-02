@@ -1,28 +1,33 @@
 # Polymarket Monitor Engine（东北大白话版）
 
-一句话：这是个盯盘的，盯 Polymarket 的金融/地缘盘子，有大单和放量就吼一嗓子，往 stdout 和 Redis 里发。
+一句话：这是个盯盘的，Polymarket 有大动静就喊一嗓子，往 stdout / Redis / Discord 发。
 
 ## 这玩意儿能干啥
 
-- 先去 Gamma 把标签和盘子拉一遍
-- 把 token_id（CLOB 资产 ID）整出来订阅
-- 监控大单、1 分钟放量、可选盘口墙
-- 统一格式发 DomainEvent
+- 去 Gamma 把盘子拉一遍，按流动性/成交量筛选。
+- 订阅 CLOB WS，序号断档就自动重订。
+- 盯：大单、1 分钟放量、盘口大墙、短时间大幅波动。
+- 统一成 DomainEvent 往下游扔。
 
-## 傻瓜式一键起跑（照抄就行）
+## 你得准备啥
 
-1) 先装 `uv`（CI 里没装会自动拉）：
+- Python 3.14
+- `uv`
+- Redis（不用就关掉 Redis sink）
 
-```bash
-brew install uv
-# 或
-pipx install uv
-```
+## 傻瓜式跑起来（照抄就行）
 
-2) 把配置抄一份：
+1) 先抄配置：
 
 ```bash
 cp config/config.example.yaml config/config.yaml
+```
+
+2) Discord 想用就整个 `.env`（本地留着，别往 Git 提交）：
+
+```bash
+cp config/.env.example .env
+# 打开 .env，把 DISCORD_WEBHOOK_URL 填上
 ```
 
 3) 一键整环境：
@@ -31,7 +36,7 @@ cp config/config.example.yaml config/config.yaml
 make bootstrap
 ```
 
-4) 起 Redis（下游得用）：
+4) 起 Redis（不用就把 `sinks.redis.enabled=false`）：
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d redis
@@ -43,50 +48,45 @@ docker compose -f deploy/docker-compose.yml up -d redis
 make run
 ```
 
-看到 stdout 有 JSON 日志，Redis 频道默认是 `polymarket.events`，就说明跑起来了。
+### 一行命令临时跑
 
-## Docker 懒人包（想省事就它）
+```bash
+DISCORD_WEBHOOK_URL=... PME__SINKS__DISCORD__ENABLED=true make run
+```
+
+### 只要 Discord 预警（不启 Redis）
+
+```bash
+DISCORD_WEBHOOK_URL=... \
+  PME__SINKS__DISCORD__ENABLED=true \
+  PME__SINKS__REDIS__ENABLED=false \
+  PME__SINKS__STDOUT__ENABLED=false \
+  make run
+```
+
+提示：如果你还想本地看日志，就别关 stdout。
+
+## Docker 懒人包（全家桶）
 
 ```bash
 docker compose -f deploy/docker-compose.yml up --build
 ```
 
-## 配置咋改
+## 重大变动规则咋配
 
-- 文件：`config/config.yaml`
-- 环境变量：前缀 `PME__`，层级用 `__`
+主要看 `signals.*`：
 
-例子：
+- `major_change_pct`：涨跌幅阈值（百分比）
+- `major_change_window_sec`：多久内算变动
+- `major_change_min_notional`：只看成交额够大的变动
+- `major_change_source`：`trade` / `book` / `any`
 
-```bash
-export PME__SINKS__REDIS__URL=redis://localhost:6379/0
-```
+## Discord 通知长啥样
 
-常用几个重点：
+- Embed 里写清楚市场名、摘要、方向、价格（统一成美分）、链接。
+- 方向颜色：YES 绿 / NO 红。
 
-- `gamma.use_events_endpoint=true`（推荐）
-- `gamma.request_interval_ms`（别请求太猛）
-- `gamma.tags_cache_sec`（标签缓存，别老拉）
-- `gamma.retry_max_attempts`（429/5xx/网络抖动自动重试）
-- `clob.custom_feature_enabled=true`（多点事件）
-- `clob.initial_dump=true`（订阅先来快照）
-- `clob.ping_interval_sec`（心跳，不要就设 null）
-- `clob.resync_on_gap`（序号断档就重订阅）
-- `clob.resync_min_interval_sec`（别狂刷重订阅）
-- `signals.major_change_pct`（重大变动阈值，百分比）
-- `signals.major_change_window_sec`（多长时间内算变动）
-- `signals.major_change_min_notional`（只看成交额足够大的变动）
-- `signals.major_change_source`（trade/book/any，来源）
-
-提示：`major_change_min_notional` 只对 trade/any 生效，因为盘口更新本身没有成交额。
-
-## Discord 通知
-
-- 环境变量里配 `DISCORD_WEBHOOK_URL`（Discord Incoming Webhook）。
-- 开关可用配置或环境变量：`PME__SINKS__DISCORD__ENABLED=true`。
-- routes 已预置：只把 `TradeSignal` 和 `HealthEvent` 发到 Discord。
-
-## 常用命令（记这几个就行）
+## 常用命令（记这几个就够）
 
 ```bash
 make build
@@ -104,13 +104,10 @@ make diagnose
 
 会检查 DNS、Gamma、WS 和配置文件。
 
-## 常见翻车原因
-
-- Redis 连不上：要么 Redis 没起，要么把 `sinks.redis.enabled=false`。
-- DNS/网络问题：确认能访问 `gamma-api.polymarket.com` 和 `ws-subscriptions-clob.polymarket.com`。
-
 ## 要不要 API Key？
 
-不用。这俩接口（Gamma + CLOB 公共 WS）目前都是公开的。
+不用。Gamma + CLOB 公共接口目前都是公开的。
 
-另外：没有 `enableOrderBook=true` 的盘子会被跳过，不订阅。
+## 目录里的中文说明
+
+`src/polymarket_monitor_engine/*/README_CN.md` 都是中文设计说明。
