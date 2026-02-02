@@ -35,6 +35,7 @@ GENZ_EVENT_MAP: dict[str, str] = {
     "feed_price_update": "💸 价格更新",
     "feed_message_ignored": "🙈 忽略消息",
     "market_lifecycle_ignored": "🙈 生命周期无关盘",
+    "focus_filter": "🎯 关键词聚焦",
 }
 
 

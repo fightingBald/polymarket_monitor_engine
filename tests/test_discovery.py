@@ -64,6 +64,7 @@ async def test_market_discovery_refresh_selects_and_sets_category() -> None:
         top_k_per_category=1,
         hot_sort=["liquidity", "volume_24h"],
         min_liquidity=None,
+        focus_keywords=[],
         keyword_allow=[],
         keyword_block=[],
         rolling_enabled=False,
@@ -104,6 +105,7 @@ async def test_market_discovery_includes_top_markets() -> None:
         top_k_per_category=1,
         hot_sort=["liquidity", "volume_24h"],
         min_liquidity=None,
+        focus_keywords=[],
         keyword_allow=[],
         keyword_block=[],
         rolling_enabled=False,
@@ -144,6 +146,7 @@ async def test_market_discovery_collects_unsubscribable_top_markets() -> None:
         top_k_per_category=1,
         hot_sort=["liquidity", "volume_24h"],
         min_liquidity=None,
+        focus_keywords=[],
         keyword_allow=[],
         keyword_block=[],
         rolling_enabled=False,
@@ -160,3 +163,49 @@ async def test_market_discovery_collects_unsubscribable_top_markets() -> None:
     results = await discovery.refresh(["finance"])
     assert results.unsubscribable[0].market_id == "m2"
     assert results.unsubscribable[0].category == "top"
+
+
+@pytest.mark.asyncio
+async def test_market_discovery_focus_keywords_filters_markets_and_top() -> None:
+    tags = [Tag(tag_id="1", slug="finance", name="Finance")]
+    markets = [
+        Market(market_id="m1", question="Will Trump win?", liquidity=10, volume_24h=50),
+        Market(market_id="m2", question="Biden odds", liquidity=25, volume_24h=10),
+        Market(
+            market_id="m3",
+            question="Iran strike watch",
+            liquidity=5,
+            volume_24h=100,
+            enable_orderbook=False,
+        ),
+    ]
+    top_markets = [
+        Market(market_id="m4", question="Strike incoming?", liquidity=999, volume_24h=999),
+        Market(market_id="m5", question="Random topic", liquidity=5, volume_24h=1),
+    ]
+    catalog = FakeCatalog(tags=tags, markets_by_tag={"1": markets}, top_markets=top_markets)
+    discovery = MarketDiscovery(
+        catalog=catalog,
+        top_k_per_category=0,
+        hot_sort=["liquidity", "volume_24h"],
+        min_liquidity=None,
+        focus_keywords=["TrUmP", "iran", "strike"],
+        keyword_allow=[],
+        keyword_block=[],
+        rolling_enabled=False,
+        primary_selection_priority=["liquidity"],
+        max_markets_per_topic=1,
+        top_enabled=True,
+        top_limit=5,
+        top_order="volume24hr",
+        top_ascending=False,
+        top_featured_only=False,
+        top_category_name="top",
+    )
+
+    results = await discovery.refresh(["finance"])
+    markets_by_category = results.markets_by_category
+
+    assert [market.market_id for market in markets_by_category["finance"]] == ["m1"]
+    assert [market.market_id for market in markets_by_category["top"]] == ["m4"]
+    assert [market.market_id for market in results.unsubscribable] == ["m3"]

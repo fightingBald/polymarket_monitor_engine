@@ -47,10 +47,11 @@ class FilterSettings(BaseModel):
     top_k_per_category: int = 10
     hot_sort: list[str] = Field(default_factory=lambda: ["liquidity", "volume_24h"])
     min_liquidity: float | None = None
+    focus_keywords: list[str] = Field(default_factory=list)
     keyword_allow: list[str] = Field(default_factory=list)
     keyword_block: list[str] = Field(default_factory=list)
 
-    @field_validator("hot_sort", "keyword_allow", "keyword_block", mode="before")
+    @field_validator("hot_sort", "focus_keywords", "keyword_allow", "keyword_block", mode="before")
     @classmethod
     def _parse_lists(cls, value: Any) -> Any:
         return _split_csv(value)

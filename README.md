@@ -47,6 +47,7 @@ List‑type envs accept CSV (no JSON needed), e.g. `PME__APP__CATEGORIES=finance
 `filters.top_k_per_category=0` means **no limit** (monitor as many as possible).
 `rolling.enabled=false` means **don’t collapse by topic** (keeps more markets).
 `gamma.events_limit_per_category=100` caps events per category **after full fetch + active filter + ranking** (volume → liquidity). More API calls, smaller WS payload. 🧯
+`filters.focus_keywords=trump,iran,strike` focuses monitoring to matching keywords (case‑insensitive). 🎯
 `gamma.events_sort_primary/secondary` control event ranking (default: `volume24hr` → `liquidity`). ⚡
 
 Example:

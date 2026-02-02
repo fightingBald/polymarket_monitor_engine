@@ -46,6 +46,7 @@ make run-dashboard
 `filters.top_k_per_category=0` 表示**不设上限**（尽量多监控）。
 `rolling.enabled=false` 表示**不按话题合并**（保留更多盘口）。
 `gamma.events_limit_per_category=100` 表示**先全量拉取 + 过滤 active 再按成交量→流动性排**，再限流每分类事件数（请求更重但 WS 订阅更小更稳）。🧯
+`filters.focus_keywords=trump,iran,strike` 表示只监控匹配关键词的盘口（不区分大小写）。🎯
 `gamma.events_sort_primary/secondary` 控制事件排序字段（默认 `volume24hr` → `liquidity`）。⚡
 
 例子：

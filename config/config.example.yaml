@@ -37,6 +37,8 @@ filters:
   hot_sort: ["liquidity", "volume_24h"]
   # Minimum liquidity to keep a market.
   min_liquidity: 0.0
+  # Focus keywords (case-insensitive). Empty = no focus filter.
+  focus_keywords: []
   # Keyword allowlist (match on question text).
   keyword_allow: []
   # Keyword blocklist (match on question text).

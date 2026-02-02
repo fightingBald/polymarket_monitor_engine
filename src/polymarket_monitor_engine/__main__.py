@@ -95,6 +95,7 @@ def build_component(settings: Settings) -> PolymarketComponent:
         top_k_per_category=settings.filters.top_k_per_category,
         hot_sort=settings.filters.hot_sort,
         min_liquidity=settings.filters.min_liquidity,
+        focus_keywords=settings.filters.focus_keywords,
         keyword_allow=settings.filters.keyword_allow,
         keyword_block=settings.filters.keyword_block,
         rolling_enabled=settings.rolling.enabled,

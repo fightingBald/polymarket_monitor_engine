@@ -24,6 +24,7 @@ class MarketDiscovery:
         top_k_per_category: int,
         hot_sort: list[str],
         min_liquidity: float | None,
+        focus_keywords: list[str],
         keyword_allow: list[str],
         keyword_block: list[str],
         rolling_enabled: bool,
@@ -40,6 +41,7 @@ class MarketDiscovery:
         self._top_k = top_k_per_category
         self._hot_sort = hot_sort
         self._min_liquidity = min_liquidity
+        self._focus_keywords = [kw.strip().lower() for kw in focus_keywords if str(kw).strip()]
         self._keyword_allow = keyword_allow
         self._keyword_block = keyword_block
         self._rolling_enabled = rolling_enabled
@@ -66,6 +68,7 @@ class MarketDiscovery:
                 continue
             markets = await self._catalog.list_markets(tag_id, active=True, closed=False)
             eligible_markets = [m for m in markets if m.active and not m.closed and not m.resolved]
+            eligible_markets = self._apply_focus_filter(eligible_markets, category=category)
             active_markets: list[Market] = []
             category_unsubscribable: list[Market] = []
             for market in eligible_markets:
@@ -102,16 +105,16 @@ class MarketDiscovery:
                 featured_only=self._top_featured_only,
                 closed=False,
             )
+            top_markets = self._apply_focus_filter(
+                [m for m in top_markets if m.active and not m.closed and not m.resolved],
+                category=self._top_category_name,
+            )
             top_unsubscribable = [m for m in top_markets if m.enable_orderbook is False]
             for market in top_unsubscribable:
                 market.category = self._top_category_name
             unsubscribable.extend(top_unsubscribable)
 
-            active_markets = [
-                m
-                for m in top_markets
-                if m.active and not m.closed and not m.resolved and m.enable_orderbook is not False
-            ]
+            active_markets = [m for m in top_markets if m.enable_orderbook is not False]
             active_markets = select_top_markets(
                 active_markets,
                 top_k=self._top_limit,
@@ -132,6 +135,26 @@ class MarketDiscovery:
             logger.info("top_refresh", category=self._top_category_name, count=len(top_selected))
 
         return DiscoveryResult(markets_by_category=results, unsubscribable=unsubscribable)
+
+    def _apply_focus_filter(self, markets: list[Market], category: str) -> list[Market]:
+        if not self._focus_keywords:
+            return markets
+        before = len(markets)
+        filtered = [market for market in markets if self._matches_focus_keyword(market.question)]
+        logger.info(
+            "focus_filter",
+            category=category,
+            before=before,
+            after=len(filtered),
+            keywords=self._focus_keywords,
+        )
+        return filtered
+
+    def _matches_focus_keyword(self, question: str) -> bool:
+        if not question:
+            return False
+        text = question.lower()
+        return any(keyword in text for keyword in self._focus_keywords)
 
 
 def resolve_tag_ids(tags: list[Tag], categories: list[str]) -> dict[str, str]:
