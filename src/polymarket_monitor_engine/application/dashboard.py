@@ -85,9 +85,11 @@ class DashboardSnapshot:
 
 
 class TerminalDashboard:
-    def __init__(self, refresh_hz: float, max_rows: int) -> None:
+    def __init__(self, refresh_hz: float, max_rows: int, sort_by: str, sort_desc: bool) -> None:
         self._refresh_hz = max(0.5, refresh_hz)
         self._max_rows = max(5, max_rows)
+        self._sort_by = sort_by
+        self._sort_desc = sort_desc
         self._rows: dict[str, MarketRow] = {}
         self._ghost_rows: dict[str, GhostRow] = {}
         self._lock = asyncio.Lock()
@@ -229,7 +231,7 @@ class TerminalDashboard:
                 )
                 market_ids.add(ghost.market_id)
 
-            rows.sort(key=lambda item: (item.category, item.title))
+            rows.sort(key=_sort_key(self._sort_by), reverse=self._sort_desc)
             rows = rows[: self._max_rows]
 
             last_refresh_age = (
@@ -358,6 +360,44 @@ def _build_caption(snapshot: DashboardSnapshot) -> str:
     )
     uptime = f"| 运行 {snapshot.uptime_s / 60:.1f}m"
     return f"{refresh} {refresh_age} {uptime}".strip()
+
+
+def _sort_key(sort_by: str):
+    def activity_score(row: DashboardRowSnapshot) -> float:
+        vol = row.vol_1m or 0.0
+        last_trade = row.last_trade_notional or 0.0
+        trade_age = row.last_trade_age_s
+        book_age = row.last_book_age_s
+        recency = 0.0
+        if trade_age is not None:
+            recency += max(0.0, 60.0 - trade_age)
+        if book_age is not None:
+            recency += max(0.0, 60.0 - book_age) * 0.5
+        return vol + last_trade * 0.1 + recency
+
+    def updated_score(row: DashboardRowSnapshot) -> float:
+        ages = [age for age in [row.last_trade_age_s, row.last_book_age_s] if age is not None]
+        if not ages:
+            return -1e9
+        return -min(ages)
+
+    def key(row: DashboardRowSnapshot):
+        mode = (sort_by or "activity").lower()
+        if mode == "activity":
+            return activity_score(row)
+        if mode == "vol_1m":
+            return row.vol_1m
+        if mode == "last_trade":
+            return row.last_trade_notional or 0.0
+        if mode == "updated":
+            return updated_score(row)
+        if mode == "category":
+            return (row.category, row.title)
+        if mode == "title":
+            return row.title
+        return activity_score(row)
+
+    return key
 
 
 def _is_multi_outcome(rows: list[MarketRow]) -> bool:

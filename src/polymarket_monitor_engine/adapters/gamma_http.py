@@ -80,7 +80,10 @@ class GammaHttpCatalog:
                 params["related_tags"] = "true"
             events = await self._paginate("/events", params)
             markets: list[Market] = []
+            now_ms = int(datetime.now(UTC).timestamp() * 1000)
             for event in events:
+                if not self._event_is_active(event, now_ms):
+                    continue
                 markets.extend(self._extract_markets_from_event(event))
             return [
                 m
@@ -206,12 +209,27 @@ class GammaHttpCatalog:
         markets_raw = event.get("markets") or []
         if not isinstance(markets_raw, list):
             return []
-        markets = [
-            GammaHttpCatalog._parse_market(item) for item in markets_raw if isinstance(item, dict)
-        ]
+        event_id = str(event.get("id") or event.get("event_id") or event.get("eventId") or "")
+        event_title = event.get("title") or event.get("slug") or ""
+        event_end = event.get("end_ts") or event.get("endDate") or event.get("endDateIso")
+        event_enable_ob = event.get("enableOrderBook")
+        enriched: list[dict[str, Any]] = []
+        for item in markets_raw:
+            if not isinstance(item, dict):
+                continue
+            if event_id and "event_id" not in item and "eventId" not in item:
+                item["_event_id"] = event_id
+            if event_end is not None and not any(
+                key in item for key in ("end_ts", "endDate", "endDateIso")
+            ):
+                item["endDate"] = event_end
+            if event_enable_ob is not None and "enableOrderBook" not in item:
+                item["enableOrderBook"] = event_enable_ob
+            enriched.append(item)
+        markets = [GammaHttpCatalog._parse_market(item) for item in enriched]
         for market in markets:
             if not market.question:
-                market.question = event.get("title") or event.get("slug") or ""
+                market.question = event_title
         return markets
 
     @staticmethod
@@ -225,6 +243,7 @@ class GammaHttpCatalog:
             or ""
         )
         question = raw.get("question") or raw.get("title") or raw.get("description") or ""
+        event_id = str(raw.get("_event_id") or raw.get("event_id") or raw.get("eventId") or "")
         active = GammaHttpCatalog._to_bool(raw.get("active"), default=True)
         closed = GammaHttpCatalog._to_bool(raw.get("closed"), default=False)
         resolved = GammaHttpCatalog._to_bool(raw.get("resolved"), default=False)
@@ -256,6 +275,7 @@ class GammaHttpCatalog:
         return Market(
             market_id=market_id,
             question=question,
+            event_id=event_id or None,
             enable_orderbook=enable_orderbook,
             active=active,
             closed=closed,
@@ -267,6 +287,22 @@ class GammaHttpCatalog:
             outcomes=outcomes,
             raw=raw,
         )
+
+    @staticmethod
+    def _event_is_active(event: dict[str, Any], now_ms: int) -> bool:
+        active = GammaHttpCatalog._to_bool(event.get("active"), default=True)
+        closed = GammaHttpCatalog._to_bool(event.get("closed"), default=False)
+        archived = GammaHttpCatalog._to_bool(event.get("archived"), default=False)
+        if not active or closed or archived:
+            return False
+        if GammaHttpCatalog._to_bool(event.get("pendingDeployment"), default=False):
+            return False
+        if GammaHttpCatalog._to_bool(event.get("deploying"), default=False):
+            return False
+        end_ts = GammaHttpCatalog._parse_end_ts(
+            event.get("end_ts") or event.get("endDate") or event.get("endDateIso")
+        )
+        return not (end_ts is not None and end_ts < now_ms)
 
     @staticmethod
     def _parse_end_ts(value: Any) -> int | None:

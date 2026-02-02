@@ -59,6 +59,7 @@ make run
 - Live view of monitored markets + prices.
 - Multi‑outcome markets are grouped into **one row** (marked “多选盘”).
 - Markets without orderbook show **gray** as “🚫 无 orderbook”.
+- Sort is configurable via `dashboard.sort_by` (`activity`/`vol_1m`/`last_trade`/`updated`/`category`/`title`).
 
 Enable (if you turned it off):
 ```bash
@@ -75,6 +76,7 @@ PME__DASHBOARD__ENABLED=true make run
   - `sinks.discord.aggregate_max_items`
 - On startup, Discord receives a **“connected + monitored markets”** status message.
 - Health checks are **not** sent to Discord by default (noise‑free).
+- Category counts are **event-based** (closer to website numbers) and stats include events/markets/tokens.
 
 ## 6) Website “Top” Markets 🏆
 

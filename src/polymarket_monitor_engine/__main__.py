@@ -117,6 +117,8 @@ def build_component(settings: Settings) -> PolymarketComponent:
         dashboard = TerminalDashboard(
             refresh_hz=settings.dashboard.refresh_hz,
             max_rows=settings.dashboard.max_rows,
+            sort_by=settings.dashboard.sort_by,
+            sort_desc=settings.dashboard.sort_desc,
         )
 
     return PolymarketComponent(

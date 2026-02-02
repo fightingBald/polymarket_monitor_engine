@@ -103,9 +103,9 @@ def test_discord_format_monitoring_status_category_counts() -> None:
         },
         raw={
             "subscribed_markets": [
-                {"market_id": "m1", "title": "A", "category": "finance"},
-                {"market_id": "m2", "title": "B", "category": "finance"},
-                {"market_id": "m3", "title": "C", "category": "geopolitics"},
+                {"market_id": "m1", "event_id": "e1", "title": "A", "category": "finance"},
+                {"market_id": "m2", "event_id": "e1", "title": "B", "category": "finance"},
+                {"market_id": "m3", "event_id": "e2", "title": "C", "category": "geopolitics"},
             ],
             "unsubscribable_markets": [],
         },
@@ -115,4 +115,4 @@ def test_discord_format_monitoring_status_category_counts() -> None:
     fields = embed.get("fields", [])
     counts = next((field for field in fields if field.get("name") == "分类统计"), None)
     assert counts is not None
-    assert "finance: 2" in counts.get("value", "")
+    assert "finance: 1" in counts.get("value", "")

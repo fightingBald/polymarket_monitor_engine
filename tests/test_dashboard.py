@@ -7,7 +7,7 @@ from polymarket_monitor_engine.domain.models import BookLevel, BookSnapshot, Tra
 
 @pytest.mark.asyncio
 async def test_dashboard_snapshot_updates() -> None:
-    dashboard = TerminalDashboard(refresh_hz=1.0, max_rows=5)
+    dashboard = TerminalDashboard(refresh_hz=1.0, max_rows=5, sort_by="activity", sort_desc=True)
     token_meta = {
         "token-1": TokenMeta(
             token_id="token-1",
@@ -55,7 +55,7 @@ async def test_dashboard_snapshot_updates() -> None:
 
 @pytest.mark.asyncio
 async def test_dashboard_multi_outcome_aggregates() -> None:
-    dashboard = TerminalDashboard(refresh_hz=1.0, max_rows=5)
+    dashboard = TerminalDashboard(refresh_hz=1.0, max_rows=5, sort_by="activity", sort_desc=True)
     token_meta = {
         "t1": TokenMeta(
             token_id="t1",
@@ -104,7 +104,7 @@ async def test_dashboard_multi_outcome_aggregates() -> None:
 
 @pytest.mark.asyncio
 async def test_dashboard_binary_markets_aggregate() -> None:
-    dashboard = TerminalDashboard(refresh_hz=1.0, max_rows=5)
+    dashboard = TerminalDashboard(refresh_hz=1.0, max_rows=5, sort_by="activity", sort_desc=True)
     token_meta = {
         "yes": TokenMeta(
             token_id="yes",
@@ -136,3 +136,38 @@ async def test_dashboard_binary_markets_aggregate() -> None:
     snapshot = await dashboard.snapshot(now_ms=now_ms)
     assert len(snapshot.rows) == 1
     assert snapshot.rows[0].note == "二元盘"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_sort_by_vol_1m() -> None:
+    dashboard = TerminalDashboard(refresh_hz=1.0, max_rows=5, sort_by="vol_1m", sort_desc=True)
+    token_meta = {
+        "t1": TokenMeta(
+            token_id="t1",
+            market_id="m1",
+            category="finance",
+            title="Market A",
+            side="YES",
+            topic_key="market a",
+        ),
+        "t2": TokenMeta(
+            token_id="t2",
+            market_id="m2",
+            category="finance",
+            title="Market B",
+            side="YES",
+            topic_key="market b",
+        ),
+    }
+    await dashboard.update_registry(token_meta)
+
+    now_ms = 1_000_000
+    await dashboard.update_trade(
+        TradeTick(token_id="t1", market_id="m1", side="YES", price=0.5, size=10, ts_ms=now_ms)
+    )
+    await dashboard.update_trade(
+        TradeTick(token_id="t2", market_id="m2", side="YES", price=0.5, size=50, ts_ms=now_ms)
+    )
+
+    snapshot = await dashboard.snapshot(now_ms=now_ms)
+    assert snapshot.rows[0].market_id == "m2"

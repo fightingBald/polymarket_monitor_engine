@@ -21,6 +21,7 @@ class OutcomeToken(BaseModel):
 class Market(BaseModel):
     market_id: str
     question: str
+    event_id: str | None = None
     category: str | None = None
     enable_orderbook: bool | None = None
     active: bool = True

@@ -12,6 +12,8 @@ dashboard:
   enabled: true
   refresh_hz: 2.0
   max_rows: 50
+  sort_by: "activity"
+  sort_desc: true
 
 filters:
   top_k_per_category: 0

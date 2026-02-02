@@ -126,8 +126,10 @@ def _build_embed(event: DomainEvent) -> dict | None:
         metrics = event.metrics
         status = metrics.get("status", "connected")
         market_count = metrics.get("market_count")
+        event_count = metrics.get("event_count")
         token_count = metrics.get("token_count")
         unsub_count = metrics.get("unsubscribable_count")
+        unsub_event_count = metrics.get("unsubscribable_event_count")
 
         raw = event.raw or {}
         subscribed = raw.get("subscribed_markets") if isinstance(raw, dict) else None
@@ -141,7 +143,13 @@ def _build_embed(event: DomainEvent) -> dict | None:
             {"name": "状态", "value": str(status), "inline": True},
             {
                 "name": "统计",
-                "value": f"markets: {market_count} | tokens: {token_count} | grey: {unsub_count}",
+                "value": _format_monitoring_stats(
+                    event_count,
+                    market_count,
+                    token_count,
+                    unsub_event_count,
+                    unsub_count,
+                ),
                 "inline": True,
             },
             {"name": "分类统计", "value": category_counts, "inline": False},
@@ -522,15 +530,43 @@ def _format_category_counts(raw: object) -> str:
     if not isinstance(raw, list) or not raw:
         return "无"
     counts: dict[str, int] = {}
+    seen: set[tuple[str, str]] = set()
     for item in raw:
         if not isinstance(item, dict):
             continue
         category = str(item.get("category") or "n/a")
+        event_id = str(item.get("event_id") or item.get("market_id") or "")
+        key = (category, event_id)
+        if event_id and key in seen:
+            continue
+        if event_id:
+            seen.add(key)
         counts[category] = counts.get(category, 0) + 1
     if not counts:
         return "无"
     ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
     return "\n".join(f"{name}: {count}" for name, count in ordered)
+
+
+def _format_monitoring_stats(
+    event_count: object,
+    market_count: object,
+    token_count: object,
+    unsub_event_count: object,
+    unsub_count: object,
+) -> str:
+    parts: list[str] = []
+    if event_count is not None:
+        parts.append(f"events: {event_count}")
+    if market_count is not None:
+        parts.append(f"markets: {market_count}")
+    if token_count is not None:
+        parts.append(f"tokens: {token_count}")
+    if unsub_event_count is not None:
+        parts.append(f"grey_events: {unsub_event_count}")
+    if unsub_count is not None:
+        parts.append(f"grey: {unsub_count}")
+    return " | ".join(parts) if parts else "n/a"
 
 
 def _aggregate_lines(events: list[DomainEvent], signal: str, max_items: int) -> list[str]:

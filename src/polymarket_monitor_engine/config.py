@@ -38,6 +38,8 @@ class DashboardSettings(BaseModel):
     enabled: bool = False
     refresh_hz: float = 2.0
     max_rows: int = 50
+    sort_by: str = "activity"
+    sort_desc: bool = True
 
 
 class FilterSettings(BaseModel):

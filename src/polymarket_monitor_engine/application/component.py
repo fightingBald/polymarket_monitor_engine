@@ -285,11 +285,14 @@ class PolymarketComponent:
         unsubscribable: list[Market],
     ) -> None:
         subscribed_markets = _unique_markets(markets_by_category)
+        subscribed_events = _unique_event_ids(subscribed_markets)
+        unsub_events = _unique_event_ids(unsubscribable)
         market_list = [
             {
                 "market_id": market.market_id,
                 "title": market.question,
                 "category": market.category,
+                "event_id": market.event_id,
                 "status": "subscribed",
             }
             for market in subscribed_markets
@@ -299,6 +302,7 @@ class PolymarketComponent:
                 "market_id": market.market_id,
                 "title": market.question,
                 "category": market.category,
+                "event_id": market.event_id,
                 "status": "grey",
             }
             for market in unsubscribable
@@ -306,9 +310,11 @@ class PolymarketComponent:
         token_count = len(self._token_meta)
         metrics = {
             "status": "connected",
+            "event_count": len(subscribed_events),
             "market_count": len(subscribed_markets),
             "token_count": token_count,
             "unsubscribable_count": len(unsubscribable),
+            "unsubscribable_event_count": len(unsub_events),
         }
         event = DomainEvent(
             event_id=new_event_id(),
@@ -322,6 +328,7 @@ class PolymarketComponent:
                         "title": market.question,
                         "category": market.category,
                         "end_ts": market.end_ts,
+                        "event_id": market.event_id,
                     }
                     for market in subscribed_markets
                 ],
@@ -331,6 +338,7 @@ class PolymarketComponent:
                         "title": market.question,
                         "category": market.category,
                         "end_ts": market.end_ts,
+                        "event_id": market.event_id,
                     }
                     for market in unsubscribable
                 ],
@@ -491,3 +499,12 @@ def _unique_markets(markets_by_category: dict[str, list[Market]]) -> list[Market
             ordered.append(market)
             seen.add(market.market_id)
     return ordered
+
+
+def _unique_event_ids(markets: list[Market]) -> set[str]:
+    seen: set[str] = set()
+    for market in markets:
+        key = market.event_id or market.topic_key or market.market_id
+        if key:
+            seen.add(key)
+    return seen
