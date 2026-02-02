@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from polymarket_monitor_engine.adapters.discord_sink import _build_aggregate_embed, _build_embed
+import json
+
+import httpx
+import pytest
+
+from polymarket_monitor_engine.adapters.discord_sink import (
+    DiscordWebhookSink,
+    _build_aggregate_embed,
+    _build_embed,
+)
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
 
 
@@ -116,3 +125,43 @@ def test_discord_format_monitoring_status_category_counts() -> None:
     counts = next((field for field in fields if field.get("name") == "分类统计"), None)
     assert counts is not None
     assert "finance: 1" in counts.get("value", "")
+
+
+@pytest.mark.asyncio
+async def test_discord_sink_logs_payload_to_file(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.com/webhook")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(204)
+
+    log_path = tmp_path / "discord.out.jsonl"
+    sink = DiscordWebhookSink(
+        max_retries=0,
+        timeout_sec=1,
+        aggregate_multi_outcome=False,
+        aggregate_window_sec=0.2,
+        aggregate_max_items=5,
+        log_payloads=True,
+        log_payloads_path=str(log_path),
+    )
+    sink._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    event = DomainEvent(
+        event_id="evt-log",
+        ts_ms=1_700_000_000_000,
+        event_type=EventType.MARKET_LIFECYCLE,
+        market_id="m1",
+        title="Brand New Market",
+        category="finance",
+        metrics={"status": "new", "end_ts": 1_800_000_000_000},
+    )
+
+    await sink.publish(event)
+    await sink._client.aclose()
+
+    lines = log_path.read_text(encoding="utf-8").strip().splitlines()
+    assert lines
+    payload = json.loads(lines[-1])
+    assert payload.get("event") == "🧷 discord_outgoing"
+    assert "payload" in payload
+    assert payload["payload"].get("embeds")

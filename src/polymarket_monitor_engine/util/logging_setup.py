@@ -19,6 +19,7 @@ GENZ_EVENT_MAP: dict[str, str] = {
     "sink_publish_failed": "💥 下游炸了",
     "discord_webhook_missing": "⚠️ Discord 没配 Webhook",
     "discord_post_failed": "🚨 Discord 推送失败",
+    "discord_payload_log_failed": "🧻 Discord 落盘翻车",
     "clob_connected": "🔌 WS 连上啦",
     "clob_decode_failed": "🧨 WS 解码翻车",
     "clob_reconnect": "🔄 WS 重连中",

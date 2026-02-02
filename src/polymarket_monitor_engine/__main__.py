@@ -77,6 +77,8 @@ def build_component(settings: Settings) -> PolymarketComponent:
             aggregate_multi_outcome=settings.sinks.discord.aggregate_multi_outcome,
             aggregate_window_sec=settings.sinks.discord.aggregate_window_sec,
             aggregate_max_items=settings.sinks.discord.aggregate_max_items,
+            log_payloads=settings.sinks.discord.log_payloads,
+            log_payloads_path=settings.sinks.discord.log_payloads_path,
         )
 
     sink = MultiplexEventSink(

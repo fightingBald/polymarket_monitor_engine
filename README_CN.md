@@ -71,6 +71,7 @@ make run
   - `sinks.discord.aggregate_multi_outcome`
   - `sinks.discord.aggregate_window_sec`
   - `sinks.discord.aggregate_max_items`
+  - `sinks.discord.log_payloads` + `sinks.discord.log_payloads_path`（把所有 Discord 出站消息落盘）。🧷📄
 - 启动时会自动发一条“已连接 + 监控盘口列表”的状态消息。
 - 生命周期通知**只针对当前监控盘口**；`removed` 表示**移出监控**，不是下架。🧹
 - 健康检查**默认不往 Discord 发**（少打扰）。

@@ -182,3 +182,7 @@ sinks:
     aggregate_window_sec: 2.0
     # Max items in aggregate embed.
     aggregate_max_items: 5
+    # Log every outgoing Discord payload.
+    log_payloads: true
+    # Payload log file (JSONL).
+    log_payloads_path: "logs/discord.out.jsonl"

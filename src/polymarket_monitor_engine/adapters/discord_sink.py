@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import random
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 import httpx
 import structlog
@@ -22,6 +25,8 @@ class DiscordWebhookSink:
         aggregate_multi_outcome: bool = True,
         aggregate_window_sec: float = 2.0,
         aggregate_max_items: int = 5,
+        log_payloads: bool = True,
+        log_payloads_path: str = "logs/discord.out.jsonl",
     ) -> None:
         webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
         self._webhook_url = webhook_url
@@ -29,6 +34,12 @@ class DiscordWebhookSink:
         self._aggregate_multi_outcome = aggregate_multi_outcome
         self._aggregate_window_sec = max(0.2, float(aggregate_window_sec))
         self._aggregate_max_items = max(1, int(aggregate_max_items))
+        self._log_payloads_enabled = bool(log_payloads)
+        self._log_payloads_path = (log_payloads_path or "").strip()
+        if self._log_payloads_enabled and not self._log_payloads_path:
+            logger.warning("discord_payload_log_failed", error="empty_path")
+            self._log_payloads_enabled = False
+        self._log_lock = asyncio.Lock()
         self._pending: dict[tuple[str, str], list[DomainEvent]] = {}
         self._pending_tasks: dict[tuple[str, str], asyncio.Task[None]] = {}
         self._lock = asyncio.Lock()
@@ -46,7 +57,8 @@ class DiscordWebhookSink:
             await self._enqueue(event)
             return
         payload = self._build_payload(event)
-        await self._post_payload(payload)
+        context = self._log_context_for_event(event)
+        await self._post_payload(payload, context=context)
 
     def _should_aggregate(self, event: DomainEvent) -> bool:
         if not self._aggregate_multi_outcome:
@@ -76,9 +88,11 @@ class DiscordWebhookSink:
         if not events:
             return
         payload = self._build_aggregate_payload(events)
-        await self._post_payload(payload)
+        context = self._log_context_for_events(events)
+        await self._post_payload(payload, context=context)
 
-    async def _post_payload(self, payload: dict) -> None:
+    async def _post_payload(self, payload: dict, context: dict[str, Any] | None = None) -> None:
+        await self._log_payload(payload, context)
         attempt = 0
         while True:
             try:
@@ -114,6 +128,52 @@ class DiscordWebhookSink:
     def _build_aggregate_payload(self, events: list[DomainEvent]) -> dict:
         embed = _build_aggregate_embed(events, max_items=self._aggregate_max_items)
         return {"embeds": [embed]} if embed else {"content": _fallback_text(events[0])}
+
+    async def _log_payload(self, payload: dict, context: dict[str, Any] | None) -> None:
+        if not self._log_payloads_enabled:
+            return
+        entry = {
+            "ts": datetime.now(tz=UTC).isoformat(),
+            "event": "🧷 discord_outgoing",
+            "payload": payload,
+        }
+        if context:
+            entry["context"] = context
+        line = json.dumps(entry, ensure_ascii=False)
+        try:
+            async with self._log_lock:
+                await asyncio.to_thread(_append_log_line, self._log_payloads_path, line)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "discord_payload_log_failed",
+                error=str(exc),
+                path=self._log_payloads_path,
+            )
+
+    @staticmethod
+    def _log_context_for_event(event: DomainEvent) -> dict[str, Any]:
+        return {
+            "event_id": event.event_id,
+            "event_type": event.event_type.value,
+            "market_id": event.market_id,
+            "category": event.category,
+            "signal": event.metrics.get("signal"),
+        }
+
+    def _log_context_for_events(self, events: list[DomainEvent]) -> dict[str, Any]:
+        if not events:
+            return {"aggregate": True, "event_count": 0}
+        context = self._log_context_for_event(events[0])
+        context["aggregate"] = True
+        context["event_count"] = len(events)
+        return context
+
+
+def _append_log_line(path: str, line: str) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(f"{line}\n")
 
 
 def _build_embed(event: DomainEvent) -> dict | None:

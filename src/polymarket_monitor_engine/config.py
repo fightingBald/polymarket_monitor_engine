@@ -137,6 +137,8 @@ class DiscordSinkSettings(BaseModel):
     aggregate_multi_outcome: bool = True
     aggregate_window_sec: float = 2.0
     aggregate_max_items: int = 5
+    log_payloads: bool = True
+    log_payloads_path: str = "logs/discord.out.jsonl"
 
 
 class SinkSettings(BaseModel):
