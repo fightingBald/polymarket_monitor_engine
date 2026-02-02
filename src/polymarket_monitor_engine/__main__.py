@@ -49,6 +49,7 @@ def build_component(settings: Settings) -> PolymarketComponent:
         channel=settings.clob.channel,
         custom_feature_enabled=settings.clob.custom_feature_enabled,
         initial_dump=settings.clob.initial_dump,
+        max_frame_bytes=settings.clob.max_frame_bytes,
         ping_interval_sec=settings.clob.ping_interval_sec,
         ping_message=settings.clob.ping_message,
         pong_message=settings.clob.pong_message,

@@ -60,6 +60,7 @@ clob:
   channel: "market"
   custom_feature_enabled: true
   initial_dump: true
+  max_frame_bytes: 1000000
   ping_interval_sec: 10
   ping_message: "PING"
   pong_message: "pong"

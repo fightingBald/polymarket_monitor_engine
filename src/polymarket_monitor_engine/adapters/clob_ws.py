@@ -27,6 +27,7 @@ class ClobWebSocketFeed:
         pong_message: str,
         reconnect_backoff_sec: int,
         reconnect_max_sec: int,
+        max_frame_bytes: int = 1_000_000,
     ) -> None:
         self._ws_url = ws_url
         self._channel = channel
@@ -37,6 +38,7 @@ class ClobWebSocketFeed:
         self._pong_message = pong_message
         self._reconnect_backoff_sec = reconnect_backoff_sec
         self._reconnect_max_sec = reconnect_max_sec
+        self._max_frame_bytes = max_frame_bytes
         self._ws: websockets.WebSocketClientProtocol | None = None
         self._stop = asyncio.Event()
         self._desired_ids: set[str] = set()
@@ -139,30 +141,104 @@ class ClobWebSocketFeed:
     async def _send_initial_subscription(self, token_ids: list[str]) -> None:
         if not token_ids:
             return
-        payload = {
+        base_payload = {
             "type": self._channel,
-            "assets_ids": token_ids,
             "custom_feature_enabled": self._custom_feature_enabled,
             "initial_dump": self._initial_dump,
         }
-        await self._send(payload)
-        logger.info("clob_subscribe", count=len(token_ids))
+        batches = self._build_payload_batches(base_payload, token_ids)
+        for idx, (batch_ids, payload_bytes) in enumerate(batches, start=1):
+            await self._send_bytes(payload_bytes)
+            logger.info(
+                "clob_subscribe",
+                count=len(batch_ids),
+                chunk_index=idx,
+                chunk_count=len(batches),
+                bytes=len(payload_bytes),
+            )
 
     async def _send_operation(self, operation: str, token_ids: list[str]) -> None:
         if not token_ids:
             return
-        payload = {
-            "assets_ids": token_ids,
+        base_payload = {
             "operation": operation,
             "custom_feature_enabled": self._custom_feature_enabled,
         }
-        await self._send(payload)
-        logger.info("clob_operation", operation=operation, count=len(token_ids))
+        batches = self._build_payload_batches(base_payload, token_ids)
+        for idx, (batch_ids, payload_bytes) in enumerate(batches, start=1):
+            await self._send_bytes(payload_bytes)
+            logger.info(
+                "clob_operation",
+                operation=operation,
+                count=len(batch_ids),
+                chunk_index=idx,
+                chunk_count=len(batches),
+                bytes=len(payload_bytes),
+            )
 
-    async def _send(self, payload: dict) -> None:
+    async def _send_bytes(self, payload: bytes) -> None:
         if self._ws is None:
             return
-        await self._ws.send(orjson.dumps(payload))
+        await self._ws.send(payload)
+
+    def _build_payload_batches(
+        self,
+        base_payload: dict,
+        token_ids: list[str],
+    ) -> list[tuple[list[str], bytes]]:
+        if not token_ids:
+            return []
+        batches: list[tuple[list[str], bytes]] = []
+        max_bytes = self._max_frame_bytes
+        current: list[str] = []
+        current_bytes: bytes | None = None
+
+        for token_id in token_ids:
+            candidate = [*current, token_id]
+            candidate_bytes = orjson.dumps({**base_payload, "assets_ids": candidate})
+            if len(candidate_bytes) <= max_bytes:
+                current = candidate
+                current_bytes = candidate_bytes
+                continue
+
+            if current:
+                batches.append(
+                    (
+                        list(current),
+                        current_bytes or orjson.dumps({**base_payload, "assets_ids": current}),
+                    )
+                )
+                current = [token_id]
+                current_bytes = orjson.dumps({**base_payload, "assets_ids": current})
+                if len(current_bytes) > max_bytes:
+                    logger.warning(
+                        "clob_payload_too_large",
+                        bytes=len(current_bytes),
+                        max_bytes=max_bytes,
+                    )
+                    batches.append((list(current), current_bytes))
+                    current = []
+                    current_bytes = None
+                continue
+
+            logger.warning(
+                "clob_payload_too_large",
+                bytes=len(candidate_bytes),
+                max_bytes=max_bytes,
+            )
+            batches.append((list(candidate), candidate_bytes))
+            current = []
+            current_bytes = None
+
+        if current:
+            batches.append(
+                (
+                    list(current),
+                    current_bytes or orjson.dumps({**base_payload, "assets_ids": current}),
+                )
+            )
+
+        return batches
 
     def _start_ping_task(self) -> None:
         if self._ping_interval_sec is None or self._ping_task is not None:

@@ -119,6 +119,7 @@ make diagnose
 
 - No API key required for public Gamma/CLOB endpoints.
 - `enableOrderBook=false` markets are **displayed** but not subscribed; they still trigger **refresh‑based volume alerts** (`web_volume_spike`).
+- WS 订阅会按 `clob.max_frame_bytes` 自动分包，避免 `1009 message too big` 掉线翻车。🧱
 - Uses `uvloop` when available for faster async.
 - Gamma rate limiting is handled by `aiolimiter`.
 - Config merge uses `deepmerge` (lists override instead of append).

@@ -105,6 +105,7 @@ class ClobSettings(BaseModel):
     channel: str = "market"
     custom_feature_enabled: bool = True
     initial_dump: bool = True
+    max_frame_bytes: int = 1_000_000
     ping_interval_sec: int | None = 10
     ping_message: str = "PING"
     pong_message: str = "pong"

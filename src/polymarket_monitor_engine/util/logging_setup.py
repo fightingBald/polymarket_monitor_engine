@@ -24,6 +24,7 @@ GENZ_EVENT_MAP: dict[str, str] = {
     "clob_reconnect": "🔄 WS 重连中",
     "clob_subscribe": "📡 订阅更新",
     "clob_operation": "🧰 WS 操作",
+    "clob_payload_too_large": "🧱 WS 包太胖了",
     "orderbook_resync": "🔁 盘口重订阅",
     "orderbook_resync_throttled": "⏳ 盘口重订太频繁",
     "orderbook_seq_gap": "🧩 盘口序号断档",
