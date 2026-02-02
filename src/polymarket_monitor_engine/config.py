@@ -28,6 +28,7 @@ class AppSettings(BaseModel):
 
 class LoggingSettings(BaseModel):
     level: str = "INFO"
+    style: str = "genz"
 
 
 class FilterSettings(BaseModel):

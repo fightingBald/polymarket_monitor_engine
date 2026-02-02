@@ -4,6 +4,7 @@ app:
 
 logging:
   level: "INFO"
+  style: "genz"
 
 filters:
   top_k_per_category: 10

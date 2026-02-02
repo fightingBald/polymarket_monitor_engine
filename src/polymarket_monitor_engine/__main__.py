@@ -128,7 +128,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     settings = load_settings(args.config)
-    configure_logging(settings.logging.level)
+    configure_logging(settings.logging.level, settings.logging.style)
     silence_httpx_logs()
 
     component = build_component(settings)
