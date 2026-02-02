@@ -65,13 +65,16 @@ class MarketDiscovery:
                 results[category] = []
                 continue
             markets = await self._catalog.list_markets(tag_id, active=True, closed=False)
-            active_markets = [
-                m
-                for m in markets
-                if m.active and not m.closed and not m.resolved and m.enable_orderbook is not False
-            ]
-            for market in active_markets:
+            eligible_markets = [m for m in markets if m.active and not m.closed and not m.resolved]
+            active_markets: list[Market] = []
+            category_unsubscribable: list[Market] = []
+            for market in eligible_markets:
                 market.category = category
+                if market.enable_orderbook is False:
+                    category_unsubscribable.append(market)
+                else:
+                    active_markets.append(market)
+            unsubscribable.extend(category_unsubscribable)
 
             if self._rolling_enabled:
                 active_markets = select_primary_markets(

@@ -85,6 +85,9 @@ async def test_market_discovery_refresh_selects_and_sets_category() -> None:
     assert len(markets_by_category["finance"]) == 1
     assert markets_by_category["finance"][0].market_id == "m1"
     assert markets_by_category["finance"][0].category == "finance"
+    assert results.unsubscribable
+    assert results.unsubscribable[0].market_id == "m4"
+    assert results.unsubscribable[0].category == "finance"
 
 
 @pytest.mark.asyncio

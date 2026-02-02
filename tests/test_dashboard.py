@@ -100,3 +100,39 @@ async def test_dashboard_multi_outcome_aggregates() -> None:
     row = snapshot.rows[0]
     assert row.note == "多选盘"
     assert row.outcome_summary is not None
+
+
+@pytest.mark.asyncio
+async def test_dashboard_binary_markets_aggregate() -> None:
+    dashboard = TerminalDashboard(refresh_hz=1.0, max_rows=5)
+    token_meta = {
+        "yes": TokenMeta(
+            token_id="yes",
+            market_id="m2",
+            category="finance",
+            title="Binary Market",
+            side="YES",
+            topic_key="binary market",
+        ),
+        "no": TokenMeta(
+            token_id="no",
+            market_id="m2",
+            category="finance",
+            title="Binary Market",
+            side="NO",
+            topic_key="binary market",
+        ),
+    }
+    await dashboard.update_registry(token_meta)
+
+    now_ms = 1_000_000
+    await dashboard.update_trade(
+        TradeTick(token_id="yes", market_id="m2", side="YES", price=0.6, size=10, ts_ms=now_ms)
+    )
+    await dashboard.update_trade(
+        TradeTick(token_id="no", market_id="m2", side="NO", price=0.4, size=10, ts_ms=now_ms)
+    )
+
+    snapshot = await dashboard.snapshot(now_ms=now_ms)
+    assert len(snapshot.rows) == 1
+    assert snapshot.rows[0].note == "二元盘"

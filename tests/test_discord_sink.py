@@ -73,3 +73,18 @@ def test_discord_format_multi_outcome_aggregate() -> None:
     detail = next((field for field in fields if field.get("name") == "明细"), None)
     assert detail is not None
     assert "Kevin" in detail.get("value", "")
+
+
+def test_discord_format_market_lifecycle() -> None:
+    event = DomainEvent(
+        event_id="evt-3",
+        ts_ms=1_700_000_000_000,
+        event_type=EventType.MARKET_LIFECYCLE,
+        market_id="m9",
+        title="Brand New Market",
+        category="finance",
+        metrics={"status": "new", "end_ts": 1_800_000_000_000},
+    )
+    embed = _build_embed(event)
+    assert embed is not None
+    assert "新盘口" in embed.get("title", "")

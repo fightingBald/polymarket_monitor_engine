@@ -43,6 +43,8 @@ make run-dashboard
 **Temporary override:** `PME__...` env vars
 
 List‑type envs accept CSV (no JSON needed), e.g. `PME__APP__CATEGORIES=finance,politics`.
+`filters.top_k_per_category=0` means **no limit** (monitor as many as possible).
+`rolling.enabled=false` means **don’t collapse by topic** (keeps more markets).
 
 Example:
 ```bash
@@ -72,6 +74,7 @@ PME__DASHBOARD__ENABLED=true make run
   - `sinks.discord.aggregate_window_sec`
   - `sinks.discord.aggregate_max_items`
 - On startup, Discord receives a **“connected + monitored markets”** status message.
+- Health checks are **not** sent to Discord by default (noise‑free).
 
 ## 6) Website “Top” Markets 🏆
 

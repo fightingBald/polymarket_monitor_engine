@@ -129,11 +129,7 @@ class GammaHttpCatalog:
         for event in events:
             markets.extend(self._extract_markets_from_event(event))
 
-        return [
-            m
-            for m in markets
-            if m.market_id and m.active and not m.closed and not m.resolved
-        ]
+        return [m for m in markets if m.market_id and m.active and not m.closed and not m.resolved]
 
     async def close(self) -> None:
         await self._client.aclose()

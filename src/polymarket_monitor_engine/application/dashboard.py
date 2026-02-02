@@ -233,9 +233,7 @@ class TerminalDashboard:
             rows = rows[: self._max_rows]
 
             last_refresh_age = (
-                (now_ms - self._last_refresh_ts_ms) / 1000
-                if self._last_refresh_ts_ms
-                else None
+                (now_ms - self._last_refresh_ts_ms) / 1000 if self._last_refresh_ts_ms else None
             )
             return DashboardSnapshot(
                 rows=rows,
@@ -358,23 +356,20 @@ def _build_caption(snapshot: DashboardSnapshot) -> str:
         if snapshot.last_refresh_age_s is not None
         else ""
     )
-    uptime = f"| 运行 {snapshot.uptime_s/60:.1f}m"
+    uptime = f"| 运行 {snapshot.uptime_s / 60:.1f}m"
     return f"{refresh} {refresh_age} {uptime}".strip()
 
 
 def _is_multi_outcome(rows: list[MarketRow]) -> bool:
-    if len(rows) > 2:
-        return True
-    if len(rows) <= 1:
-        return False
-    sides = {((row.side or "").upper()) for row in rows}
-    return not sides.issubset({"YES", "NO"})
+    return len(rows) > 1
 
 
 def _build_multi_row(rows: list[MarketRow], now_ms: int) -> DashboardRowSnapshot:
     title = rows[0].title
     category = rows[0].category
     market_id = rows[0].market_id
+    sides = {((row.side or "").upper()) for row in rows}
+    note = "二元盘" if sides.issubset({"YES", "NO"}) else "多选盘"
 
     def price_value(row: MarketRow) -> float | None:
         return row.last_trade_price if row.last_trade_price is not None else row.mid
@@ -388,15 +383,9 @@ def _build_multi_row(rows: list[MarketRow], now_ms: int) -> DashboardRowSnapshot
     outcome_summary = _build_outcome_summary(sorted_rows, limit=4)
 
     trade_ages = [
-        (now_ms - row.last_trade_ts) / 1000
-        for row in rows
-        if row.last_trade_ts is not None
+        (now_ms - row.last_trade_ts) / 1000 for row in rows if row.last_trade_ts is not None
     ]
-    book_ages = [
-        (now_ms - row.last_book_ts) / 1000
-        for row in rows
-        if row.last_book_ts is not None
-    ]
+    book_ages = [(now_ms - row.last_book_ts) / 1000 for row in rows if row.last_book_ts is not None]
 
     return DashboardRowSnapshot(
         token_id="",
@@ -405,7 +394,7 @@ def _build_multi_row(rows: list[MarketRow], now_ms: int) -> DashboardRowSnapshot
         category=category,
         side=None,
         subscribable=True,
-        note="多选盘",
+        note=note,
         outcome_summary=outcome_summary,
         last_price=price_value(top_row),
         best_bid=top_row.best_bid,

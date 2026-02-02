@@ -218,7 +218,7 @@ def _sanitize_env_overrides(prefix: str = "PME__") -> None:
                 items = [item.strip() for item in stripped.split(",") if item.strip()]
                 os.environ[key] = json.dumps(items)
                 continue
-        suffix = key[len(prefix):]
+        suffix = key[len(prefix) :]
         if "__" not in suffix:
             try:
                 json.loads(value)

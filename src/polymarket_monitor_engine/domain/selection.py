@@ -70,4 +70,6 @@ def select_top_markets(
         filtered.append(market)
 
     filtered.sort(key=lambda m: tuple(_priority_value(m, key) for key in hot_sort))
+    if top_k <= 0:
+        return filtered
     return filtered[:top_k]

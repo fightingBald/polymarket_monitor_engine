@@ -43,6 +43,8 @@ make run-dashboard
 **临时覆盖：**`PME__...`
 
 列表类环境变量支持逗号分隔（不用 JSON），例如 `PME__APP__CATEGORIES=finance,politics`。
+`filters.top_k_per_category=0` 表示**不设上限**（尽量多监控）。
+`rolling.enabled=false` 表示**不按话题合并**（保留更多盘口）。
 
 例子：
 ```bash
@@ -67,6 +69,7 @@ make run
   - `sinks.discord.aggregate_window_sec`
   - `sinks.discord.aggregate_max_items`
 - 启动时会自动发一条“已连接 + 监控盘口列表”的状态消息。
+- 健康检查**默认不往 Discord 发**（少打扰）。
 
 ## 6) 网页 Top 盘子 🏆
 

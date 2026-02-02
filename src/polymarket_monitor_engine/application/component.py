@@ -5,8 +5,8 @@ from typing import Any
 
 import structlog
 
-from polymarket_monitor_engine.application.discovery import MarketDiscovery
 from polymarket_monitor_engine.application.dashboard import TerminalDashboard
+from polymarket_monitor_engine.application.discovery import MarketDiscovery
 from polymarket_monitor_engine.application.monitor import SignalDetector
 from polymarket_monitor_engine.application.orderbook import OrderBookRegistry, OrderBookUpdateResult
 from polymarket_monitor_engine.application.parsers import parse_book, parse_trade
@@ -77,7 +77,10 @@ class PolymarketComponent:
             try:
                 start_ms = self._clock.now_ms()
                 discovery_result = await self._discovery.refresh(self._categories)
-                await self._handle_refresh(discovery_result.markets_by_category)
+                await self._handle_refresh(
+                    discovery_result.markets_by_category,
+                    discovery_result.unsubscribable,
+                )
                 window_sec = self._refresh_interval_sec
                 if self._last_refresh_start_ms is not None:
                     gap_ms = max(0, start_ms - self._last_refresh_start_ms)
@@ -139,10 +142,17 @@ class PolymarketComponent:
             else:
                 logger.debug("feed_message_ignored", payload=message.payload)
 
-    async def _handle_refresh(self, markets_by_category: dict[str, list[Market]]) -> None:
+    async def _handle_refresh(
+        self,
+        markets_by_category: dict[str, list[Market]],
+        unsubscribable: list[Market] | None = None,
+    ) -> None:
         new_markets: dict[str, Market] = {}
         for markets in markets_by_category.values():
             for market in markets:
+                new_markets[market.market_id] = market
+        for market in unsubscribable or []:
+            if market.market_id:
                 new_markets[market.market_id] = market
 
         await self._emit_market_lifecycle(new_markets)

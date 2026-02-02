@@ -58,9 +58,7 @@ class DiscordWebhookSink:
         if not event.market_id or not event.side:
             return False
         side = event.side.upper()
-        if side in {"YES", "NO"}:
-            return False
-        return True
+        return side not in {"YES", "NO"}
 
     async def _enqueue(self, event: DomainEvent) -> None:
         key = (event.market_id or "n/a", str(event.metrics.get("signal") or "signal"))
@@ -166,6 +164,33 @@ def _build_embed(event: DomainEvent) -> dict | None:
             "title": "🩺 健康检查",
             "color": color,
             "fields": fields,
+            "timestamp": ts.isoformat(),
+        }
+
+    if event.event_type == EventType.MARKET_LIFECYCLE:
+        status = str(event.metrics.get("status", "unknown"))
+        end_ts = event.metrics.get("end_ts")
+        title = "🔁 盘口状态变更"
+        color = 0x3498DB
+        if status == "new":
+            title = "🆕 新盘口"
+            color = 0x2ECC71
+        elif status == "removed":
+            title = "🧹 盘口下架"
+            color = 0xE67E22
+        fields = [
+            {"name": "状态", "value": status, "inline": True},
+            {"name": "分类", "value": category, "inline": True},
+            {"name": "到期", "value": _fmt_end_ts(end_ts), "inline": True},
+        ]
+        if market_id != "n/a":
+            fields.append({"name": "市场ID", "value": market_id, "inline": False})
+        return {
+            "title": title,
+            "color": color,
+            "description": market,
+            "fields": fields,
+            "url": _market_url(market_id, market),
             "timestamp": ts.isoformat(),
         }
 
@@ -387,6 +412,16 @@ def _fmt_price(value: float | int | None) -> str:
     return f"{float(value) * 100:.1f}¢"
 
 
+def _fmt_end_ts(value: float | int | None) -> str:
+    if value is None:
+        return "n/a"
+    try:
+        ts = datetime.fromtimestamp(float(value) / 1000, tz=UTC)
+    except (TypeError, ValueError, OSError):
+        return "n/a"
+    return ts.strftime("%Y-%m-%d")
+
+
 def _fmt_side(value: str | None) -> str:
     return value or "未知"
 
@@ -448,17 +483,36 @@ def _summary_web_volume(market: str, delta: float | int | None, window: int | No
 def _format_market_list(raw: object, limit: int) -> str:
     if not isinstance(raw, list) or not raw:
         return "无"
-    lines: list[str] = []
-    for item in raw[:limit]:
+    grouped: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for item in raw:
         if not isinstance(item, dict):
             continue
-        title = str(item.get("title") or "(unknown)")
         category = str(item.get("category") or "n/a")
-        lines.append(f"• [{category}] {title}")
+        grouped.setdefault(category, []).append(item)
+        if category not in order:
+            order.append(category)
+
+    lines: list[str] = []
+    while len(lines) < limit:
+        added = False
+        for category in order:
+            bucket = grouped.get(category)
+            if not bucket:
+                continue
+            item = bucket.pop(0)
+            title = str(item.get("title") or "(unknown)")
+            lines.append(f"• [{category}] {title}")
+            added = True
+            if len(lines) >= limit:
+                break
+        if not added:
+            break
     if not lines:
         return "无"
-    if isinstance(raw, list) and len(raw) > limit:
-        lines.append(f"... 还有 {len(raw) - limit} 个")
+    remaining = sum(len(items) for items in grouped.values())
+    if remaining > 0:
+        lines.append(f"... 还有 {remaining} 个")
     return "\n".join(lines)
 
 
