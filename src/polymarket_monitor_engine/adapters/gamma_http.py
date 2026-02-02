@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import json
-import time
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 import structlog
+from aiolimiter import AsyncLimiter
+from cachetools import TTLCache
 from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from polymarket_monitor_engine.domain.models import Market, OutcomeToken, Tag
@@ -35,16 +35,19 @@ class GammaHttpCatalog:
         self._request_interval_ms = request_interval_ms
         self._tags_cache_sec = tags_cache_sec
         self._retry_max_attempts = retry_max_attempts
-        self._tags_cache: list[Tag] | None = None
-        self._tags_cache_ts: float | None = None
+        self._tags_cache: TTLCache[str, list[Tag]] = TTLCache(
+            maxsize=1,
+            ttl=max(1, int(tags_cache_sec)),
+        )
+        self._rate_limiter: AsyncLimiter | None = None
+        if self._request_interval_ms > 0:
+            period = max(0.001, self._request_interval_ms / 1000.0)
+            self._rate_limiter = AsyncLimiter(1, period)
 
     async def list_tags(self) -> list[Tag]:
-        if (
-            self._tags_cache
-            and self._tags_cache_ts is not None
-            and (time.time() - self._tags_cache_ts) < self._tags_cache_sec
-        ):
-            return self._tags_cache
+        cached = self._tags_cache.get("tags")
+        if cached is not None:
+            return cached
 
         items = await self._paginate("/tags", {})
         parsed: list[Tag] = []
@@ -60,8 +63,7 @@ class GammaHttpCatalog:
                     raw=raw or None,
                 )
             )
-        self._tags_cache = parsed
-        self._tags_cache_ts = time.time()
+        self._tags_cache["tags"] = parsed
         return parsed
 
     async def list_markets(
@@ -153,7 +155,6 @@ class GammaHttpCatalog:
             if not items or len(items) < limit:
                 break
             offset += limit
-            await self._rate_limit_pause()
 
         logger.info("gamma_paginate", path=path, count=len(collected))
         return collected
@@ -172,9 +173,10 @@ class GammaHttpCatalog:
         return [item for item in items if isinstance(item, dict)]
 
     async def _rate_limit_pause(self) -> None:
-        if self._request_interval_ms <= 0:
+        if self._rate_limiter is None:
             return
-        await asyncio.sleep(self._request_interval_ms / 1000.0)
+        async with self._rate_limiter:
+            return None
 
     async def _request_json(self, path: str, params: dict[str, Any]) -> Any:
         async for attempt in AsyncRetrying(
@@ -184,6 +186,7 @@ class GammaHttpCatalog:
             reraise=True,
         ):
             with attempt:
+                await self._rate_limit_pause()
                 resp = await self._client.get(path, params=params)
                 if resp.status_code == 429 or 500 <= resp.status_code < 600:
                     raise httpx.HTTPStatusError(
