@@ -59,6 +59,7 @@ class PolymarketComponent:
         self._unsub_cooldowns: dict[str, int] = {}
         self._last_refresh_start_ms: int | None = None
         self._startup_notified = False
+        self._lifecycle_ready = False
 
     async def run(self) -> None:
         try:
@@ -147,6 +148,7 @@ class PolymarketComponent:
         markets_by_category: dict[str, list[Market]],
         unsubscribable: list[Market] | None = None,
     ) -> None:
+        initial = not self._lifecycle_ready
         new_markets: dict[str, Market] = {}
         for markets in markets_by_category.values():
             for market in markets:
@@ -155,7 +157,8 @@ class PolymarketComponent:
             if market.market_id:
                 new_markets[market.market_id] = market
 
-        await self._emit_market_lifecycle(new_markets)
+        if not initial:
+            await self._emit_market_lifecycle(new_markets)
 
         token_meta = self._build_token_meta(markets_by_category)
         self._detector.update_registry(token_meta)
@@ -173,6 +176,7 @@ class PolymarketComponent:
 
         self._token_meta = token_meta
         self._markets_by_id = new_markets
+        self._lifecycle_ready = True
 
     def _build_token_meta(
         self,
@@ -281,6 +285,24 @@ class PolymarketComponent:
         unsubscribable: list[Market],
     ) -> None:
         subscribed_markets = _unique_markets(markets_by_category)
+        market_list = [
+            {
+                "market_id": market.market_id,
+                "title": market.question,
+                "category": market.category,
+                "status": "subscribed",
+            }
+            for market in subscribed_markets
+        ]
+        market_list.extend(
+            {
+                "market_id": market.market_id,
+                "title": market.question,
+                "category": market.category,
+                "status": "grey",
+            }
+            for market in unsubscribable
+        )
         token_count = len(self._token_meta)
         metrics = {
             "status": "connected",
@@ -318,6 +340,11 @@ class PolymarketComponent:
             "monitoring_status_emit",
             market_count=len(subscribed_markets),
             token_count=token_count,
+        )
+        logger.info(
+            "market_list",
+            count=len(market_list),
+            markets=market_list,
         )
         await self._sink.publish(event)
 
