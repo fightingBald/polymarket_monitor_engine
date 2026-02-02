@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap build lint format test test-integration ci-test run docs release gen migrate-up migrate-down diagnose
+.PHONY: help bootstrap build lint format test test-integration ci-test run run-dashboard docs release gen migrate-up migrate-down diagnose
 
 help:
 	@echo ""
@@ -32,6 +32,13 @@ ci-test: ## Run the CI-equivalent test pipeline
 
 run: ## Launch the primary service or application locally
 	@bash scripts/run.sh
+
+run-dashboard: ## Launch with dashboard + discord only (no redis/stdout)
+	@PME__DASHBOARD__ENABLED=true \
+	PME__SINKS__DISCORD__ENABLED=true \
+	PME__SINKS__REDIS__ENABLED=false \
+	PME__SINKS__STDOUT__ENABLED=false \
+	bash scripts/run.sh
 
 diagnose: ## Run DNS + API reachability checks
 	@bash scripts/diagnose.sh
