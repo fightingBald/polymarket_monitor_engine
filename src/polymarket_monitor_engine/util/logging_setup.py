@@ -9,6 +9,7 @@ GENZ_EVENT_MAP: dict[str, str] = {
     "component_shutdown": "👋 收工咯 (￣▽￣)ゞ",
     "gamma_paginate": "🧭 拉盘数据ing (ง •̀_•́)ง",
     "category_refresh": "🧪 刷新分类 OK (•̀ᴗ•́)و",
+    "top_refresh": "🏆 Top 刷新 OK (ง •̀_•́)ง",
     "refresh_failed": "😵 刷新翻车了",
     "tag_not_found": "🕵️ 标签没找到 (•́⍛•̀)",
     "signal_emit": "🚨 预警触发!",
@@ -24,6 +25,9 @@ GENZ_EVENT_MAP: dict[str, str] = {
     "clob_operation": "🧰 WS 操作",
     "orderbook_resync": "🔁 盘口重订阅",
     "orderbook_resync_throttled": "⏳ 盘口重订太频繁",
+    "orderbook_seq_gap": "🧩 盘口序号断档",
+    "orderbook_missing_snapshot": "🫥 盘口没快照",
+    "web_volume_spike_emit": "🧊 灰盘放量警报",
     "feed_price_update": "💸 价格更新",
     "feed_message_ignored": "🙈 忽略消息",
 }

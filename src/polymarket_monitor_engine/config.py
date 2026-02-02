@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,12 @@ class LoggingSettings(BaseModel):
     style: str = "genz"
 
 
+class DashboardSettings(BaseModel):
+    enabled: bool = False
+    refresh_hz: float = 2.0
+    max_rows: int = 50
+
+
 class FilterSettings(BaseModel):
     top_k_per_category: int = 10
     hot_sort: list[str] = Field(default_factory=lambda: ["liquidity", "volume_24h"])
@@ -42,6 +49,15 @@ class FilterSettings(BaseModel):
     @classmethod
     def _parse_lists(cls, value: Any) -> Any:
         return _split_csv(value)
+
+
+class TopSettings(BaseModel):
+    enabled: bool = False
+    limit: int = 30
+    order: str = "volume24hr"
+    ascending: bool = False
+    featured_only: bool = False
+    category_name: str = "top"
 
 
 class SignalSettings(BaseModel):
@@ -129,12 +145,15 @@ class Settings(BaseSettings):
         env_prefix="PME__",
         env_nested_delimiter="__",
         env_file=".env",
+        env_ignore_empty=True,
         extra="ignore",
     )
 
     app: AppSettings = Field(default_factory=AppSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
     filters: FilterSettings = Field(default_factory=FilterSettings)
+    top: TopSettings = Field(default_factory=TopSettings)
     signals: SignalSettings = Field(default_factory=SignalSettings)
     rolling: RollingSettings = Field(default_factory=RollingSettings)
     gamma: GammaSettings = Field(default_factory=GammaSettings)
@@ -163,7 +182,26 @@ def load_settings(path: Path | None) -> Settings:
         else:
             raise ValueError(f"Unsupported config format: {path}")
 
+    _sanitize_env_overrides()
     env_settings = Settings()
     overrides = env_settings.model_dump(exclude_unset=True)
     merged = _deep_merge(file_data, overrides)
     return Settings.model_validate(merged)
+
+
+def _sanitize_env_overrides(prefix: str = "PME__") -> None:
+    for key in list(os.environ.keys()):
+        if not key.startswith(prefix):
+            continue
+        value = os.environ.get(key)
+        if value is None:
+            continue
+        if not value.strip():
+            os.environ.pop(key, None)
+            continue
+        suffix = key[len(prefix):]
+        if "__" not in suffix:
+            try:
+                json.loads(value)
+            except Exception:
+                os.environ.pop(key, None)

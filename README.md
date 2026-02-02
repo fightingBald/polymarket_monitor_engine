@@ -71,6 +71,23 @@ DISCORD_WEBHOOK_URL=... \
 
 Tip: keep stdout on if you still want local logs.
 
+### Live Terminal Dashboard (for eyeballing) 🧭
+
+Enable a live TUI to see monitored markets + prices in real time:
+
+```bash
+PME__DASHBOARD__ENABLED=true make run
+```
+
+Or with CLI flag:
+
+```bash
+python -m polymarket_monitor_engine --dashboard
+```
+
+Dashboard note: markets without orderbook (from website Top) show in gray as “🚫 无 orderbook” and are not subscribed.
+They still participate in alerts via refresh‑based volume deltas (signal: `web_volume_spike`).
+
 ## Docker (all‑in‑one) 🐳
 
 ```bash
@@ -85,6 +102,7 @@ docker compose -f deploy/docker-compose.yml up --build
 Key knobs:
 
 - `filters.*`: selection rules
+- `top.*`: include “Top” markets from the website feed
 - `signals.*`: thresholds + major change rules
 - `clob.*`: WS snapshot/ping/resync
 - `sinks.*`: enable/disable + routing
@@ -97,6 +115,20 @@ sinks:
     TradeSignal: [stdout, redis, discord]
     HealthEvent: [stdout, redis, discord]
 ```
+
+### Monitor website “Top” markets 🏆
+
+Turn this on to pull the website Top list into monitoring (category name defaults to `top`):
+
+```bash
+PME__TOP__ENABLED=true make run
+```
+
+Fine‑tune:
+
+- `PME__TOP__LIMIT`: how many Top markets to include
+- `PME__TOP__ORDER`: ordering (default `volume24hr`)
+- `PME__TOP__FEATURED_ONLY`: only featured events (closest to website Top)
 
 ## Discord Webhook 🧷
 

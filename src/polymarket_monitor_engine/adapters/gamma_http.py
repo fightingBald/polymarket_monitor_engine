@@ -101,6 +101,40 @@ class GammaHttpCatalog:
         markets = [self._parse_market(item) for item in items]
         return [m for m in markets if m.market_id]
 
+    async def list_top_markets(
+        self,
+        limit: int,
+        order: str | None,
+        ascending: bool,
+        featured_only: bool,
+        closed: bool = False,
+    ) -> list[Market]:
+        params: dict[str, Any] = {
+            "closed": str(closed).lower(),
+            "limit": max(1, int(limit)),
+            "offset": 0,
+        }
+        if featured_only:
+            params["featured"] = "true"
+        if order:
+            params["order"] = order
+            params["ascending"] = str(ascending).lower()
+
+        payload = await self._request_json("/events", params)
+        events = self._extract_items(payload)
+        if limit and len(events) > limit:
+            events = events[:limit]
+
+        markets: list[Market] = []
+        for event in events:
+            markets.extend(self._extract_markets_from_event(event))
+
+        return [
+            m
+            for m in markets
+            if m.market_id and m.active and not m.closed and not m.resolved
+        ]
+
     async def close(self) -> None:
         await self._client.aclose()
 
@@ -217,9 +251,10 @@ class GammaHttpCatalog:
             or raw.get("volume24hrClob")
         )
 
-        token_ids = GammaHttpCatalog._parse_clob_token_ids(raw.get("clobTokenIds"))
+        clob_token_ids = GammaHttpCatalog._parse_clob_token_ids(raw.get("clobTokenIds"))
         outcomes = GammaHttpCatalog._extract_outcomes(raw)
-        token_ids.extend([outcome.token_id for outcome in outcomes if outcome.token_id])
+        outcomes = GammaHttpCatalog._attach_outcome_token_ids(outcomes, clob_token_ids)
+        token_ids = clob_token_ids + [outcome.token_id for outcome in outcomes if outcome.token_id]
         token_ids = [token_id for token_id in dict.fromkeys(token_ids) if token_id]
 
         return Market(
@@ -309,6 +344,28 @@ class GammaHttpCatalog:
                     add_token(token)
 
         return outcomes
+
+    @staticmethod
+    def _attach_outcome_token_ids(
+        outcomes: list[OutcomeToken],
+        clob_token_ids: list[str],
+    ) -> list[OutcomeToken]:
+        if not outcomes or not clob_token_ids:
+            return outcomes
+        if len(outcomes) != len(clob_token_ids):
+            return outcomes
+
+        enriched: list[OutcomeToken] = []
+        for idx, outcome in enumerate(outcomes):
+            token_id = outcome.token_id or clob_token_ids[idx]
+            enriched.append(
+                OutcomeToken(
+                    token_id=token_id,
+                    side=outcome.side,
+                    raw=outcome.raw,
+                )
+            )
+        return enriched
 
     @staticmethod
     def _parse_clob_token_ids(value: Any) -> list[str]:

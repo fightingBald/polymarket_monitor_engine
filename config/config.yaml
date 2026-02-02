@@ -6,12 +6,25 @@ logging:
   level: "INFO"
   style: "genz"
 
+dashboard:
+  enabled: false
+  refresh_hz: 2.0
+  max_rows: 50
+
 filters:
   top_k_per_category: 10
   hot_sort: ["liquidity", "volume_24h"]
   min_liquidity: 0.0
   keyword_allow: []
   keyword_block: []
+
+top:
+  enabled: false
+  limit: 30
+  order: "volume24hr"
+  ascending: false
+  featured_only: false
+  category_name: "top"
 
 signals:
   big_trade_usd: 10000.0

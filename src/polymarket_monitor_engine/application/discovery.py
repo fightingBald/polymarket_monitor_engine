@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import structlog
 
 from polymarket_monitor_engine.domain.models import Market, Tag
@@ -7,6 +9,12 @@ from polymarket_monitor_engine.domain.selection import select_primary_markets, s
 from polymarket_monitor_engine.ports.catalog import CatalogPort
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass(slots=True)
+class DiscoveryResult:
+    markets_by_category: dict[str, list[Market]]
+    unsubscribable: list[Market]
 
 
 class MarketDiscovery:
@@ -21,6 +29,12 @@ class MarketDiscovery:
         rolling_enabled: bool,
         primary_selection_priority: list[str],
         max_markets_per_topic: int,
+        top_enabled: bool,
+        top_limit: int,
+        top_order: str | None,
+        top_ascending: bool,
+        top_featured_only: bool,
+        top_category_name: str,
     ) -> None:
         self._catalog = catalog
         self._top_k = top_k_per_category
@@ -31,11 +45,18 @@ class MarketDiscovery:
         self._rolling_enabled = rolling_enabled
         self._primary_priority = primary_selection_priority
         self._max_markets_per_topic = max_markets_per_topic
+        self._top_enabled = top_enabled
+        self._top_limit = top_limit
+        self._top_order = top_order
+        self._top_ascending = top_ascending
+        self._top_featured_only = top_featured_only
+        self._top_category_name = top_category_name
 
-    async def refresh(self, categories: list[str]) -> dict[str, list[Market]]:
+    async def refresh(self, categories: list[str]) -> DiscoveryResult:
         tags = await self._catalog.list_tags()
         tag_map = resolve_tag_ids(tags, categories)
         results: dict[str, list[Market]] = {}
+        unsubscribable: list[Market] = []
 
         for category in categories:
             tag_id = tag_map.get(category)
@@ -70,7 +91,44 @@ class MarketDiscovery:
             results[category] = selected
             logger.info("category_refresh", category=category, count=len(selected))
 
-        return results
+        if self._top_enabled:
+            top_markets = await self._catalog.list_top_markets(
+                limit=self._top_limit,
+                order=self._top_order,
+                ascending=self._top_ascending,
+                featured_only=self._top_featured_only,
+                closed=False,
+            )
+            top_unsubscribable = [m for m in top_markets if m.enable_orderbook is False]
+            for market in top_unsubscribable:
+                market.category = self._top_category_name
+            unsubscribable.extend(top_unsubscribable)
+
+            active_markets = [
+                m
+                for m in top_markets
+                if m.active and not m.closed and not m.resolved and m.enable_orderbook is not False
+            ]
+            active_markets = select_top_markets(
+                active_markets,
+                top_k=self._top_limit,
+                hot_sort=[],
+                min_liquidity=self._min_liquidity,
+                keyword_allow=self._keyword_allow,
+                keyword_block=self._keyword_block,
+            )
+
+            known_ids = {m.market_id for markets in results.values() for m in markets}
+            top_selected: list[Market] = []
+            for market in active_markets:
+                if market.market_id in known_ids:
+                    continue
+                market.category = self._top_category_name
+                top_selected.append(market)
+            results[self._top_category_name] = top_selected
+            logger.info("top_refresh", category=self._top_category_name, count=len(top_selected))
+
+        return DiscoveryResult(markets_by_category=results, unsubscribable=unsubscribable)
 
 
 def resolve_tag_ids(tags: list[Tag], categories: list[str]) -> dict[str, str]:

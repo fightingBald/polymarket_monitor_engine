@@ -66,6 +66,22 @@ DISCORD_WEBHOOK_URL=... \
 
 提示：想本地看日志就别关 stdout。
 
+### 终端仪表盘（看得见才安心）🧭
+
+开个实时仪表盘，看它盯哪几个盘口、报价咋样：
+
+```bash
+PME__DASHBOARD__ENABLED=true make run
+```
+
+或者命令行开关：
+
+```bash
+python -m polymarket_monitor_engine --dashboard
+```
+
+仪表盘提示：网页 Top 里没有 orderbook 的盘子会灰掉标 “🚫 无 orderbook”，只展示不订阅，但会用刷新间隔的成交量变化触发预警（`web_volume_spike`）。
+
 ## Docker 懒人包 🐳
 
 ```bash
@@ -120,3 +136,17 @@ make diagnose
 ## 目录里的中文说明 📚
 
 `src/polymarket_monitor_engine/*/README_CN.md` 都是中文设计说明。
+
+## 网页 Top 盘子也要监控？🏆
+
+一键开：
+
+```bash
+PME__TOP__ENABLED=true make run
+```
+
+可调参数（按需）：
+
+- `PME__TOP__LIMIT`：拉多少个 Top
+- `PME__TOP__ORDER`：排序字段（默认 `volume24hr`）
+- `PME__TOP__FEATURED_ONLY`：只要精选盘（更接近网页 Top）

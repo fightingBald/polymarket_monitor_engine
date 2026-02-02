@@ -34,6 +34,21 @@ def test_parse_market_and_outcomes() -> None:
     assert set(market.token_ids) == {"t1", "t2", "t3", "t4"}
 
 
+def test_parse_market_attaches_outcome_token_ids() -> None:
+    raw = {
+        "condition_id": "m2",
+        "question": "Attach?",
+        "active": True,
+        "closed": False,
+        "outcomes": '["Yes", "No"]',
+        "clobTokenIds": '["yes-id", "no-id"]',
+    }
+    market = GammaHttpCatalog._parse_market(raw)
+
+    assert [outcome.token_id for outcome in market.outcomes] == ["yes-id", "no-id"]
+    assert [outcome.side for outcome in market.outcomes] == ["Yes", "No"]
+
+
 @pytest.mark.asyncio
 async def test_list_tags_paginates() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
@@ -112,3 +127,53 @@ async def test_list_markets_events_endpoint_uses_event_title() -> None:
     assert seen_params.get("related_tags") == "true"
     assert [market.market_id for market in markets] == ["m1"]
     assert markets[0].question == "Event Title"
+
+
+@pytest.mark.asyncio
+async def test_list_top_markets_uses_events_params() -> None:
+    seen_params = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path != "/events":
+            return httpx.Response(404)
+        seen_params.update(request.url.params)
+        payload = {
+            "data": [
+                {
+                    "title": "Top Event",
+                    "markets": [
+                        {"conditionId": "m1", "question": "", "active": True, "closed": False}
+                    ],
+                }
+            ]
+        }
+        return httpx.Response(200, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(base_url="https://example.com", transport=transport)
+    catalog = GammaHttpCatalog(
+        base_url="https://example.com",
+        timeout_sec=1,
+        page_size=200,
+        use_events_endpoint=True,
+        related_tags=False,
+        request_interval_ms=0,
+        tags_cache_sec=0,
+        retry_max_attempts=1,
+    )
+    catalog._client = client
+
+    markets = await catalog.list_top_markets(
+        limit=5,
+        order="volume24hr",
+        ascending=False,
+        featured_only=True,
+        closed=False,
+    )
+    await client.aclose()
+
+    assert seen_params.get("featured") == "true"
+    assert seen_params.get("order") == "volume24hr"
+    assert seen_params.get("ascending") == "false"
+    assert seen_params.get("limit") == "5"
+    assert [market.market_id for market in markets] == ["m1"]

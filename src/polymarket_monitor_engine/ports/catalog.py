@@ -14,3 +14,12 @@ class CatalogPort(Protocol):
         active: bool = True,
         closed: bool = False,
     ) -> list[Market]: ...
+
+    async def list_top_markets(
+        self,
+        limit: int,
+        order: str | None,
+        ascending: bool,
+        featured_only: bool,
+        closed: bool = False,
+    ) -> list[Market]: ...

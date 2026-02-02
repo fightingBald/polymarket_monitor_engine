@@ -157,6 +157,29 @@ def _build_embed(event: DomainEvent) -> dict | None:
             "timestamp": ts.isoformat(),
         }
 
+    if signal == "web_volume_spike":
+        delta = event.metrics.get("delta_volume")
+        window = event.metrics.get("window_sec")
+        total = event.metrics.get("volume_24h")
+        summary = _summary_web_volume(market, delta, window)
+        fields = [
+            {"name": "摘要", "value": summary, "inline": False},
+            {"name": "区间成交", "value": _fmt_money(delta), "inline": True},
+            {"name": "24h 成交", "value": _fmt_money(total), "inline": True},
+            {"name": "窗口", "value": f"{window}s", "inline": True},
+            {"name": "分类", "value": category, "inline": True},
+        ]
+        if market_id != "n/a":
+            fields.append({"name": "市场ID", "value": market_id, "inline": False})
+        return {
+            "title": "🧊 灰盘放量（无 orderbook）",
+            "color": 0x1ABC9C,
+            "description": market,
+            "fields": fields,
+            "url": _market_url(market_id, market),
+            "timestamp": ts.isoformat(),
+        }
+
     summary = f"{market} | {signal}"
     fields = [
         {"name": "摘要", "value": summary, "inline": False},
@@ -292,3 +315,8 @@ def _summary_big_trade(market: str, notional: float | int | None, side: str | No
 
 def _summary_volume_spike(market: str, vol: float | int | None) -> str:
     return f"{market} | 1分钟放量 {_fmt_money(vol)}"
+
+
+def _summary_web_volume(market: str, delta: float | int | None, window: int | None) -> str:
+    window_text = f"{window}s" if window is not None else "n/a"
+    return f"{market} | 灰盘放量 {_fmt_money(delta)} / {window_text}"

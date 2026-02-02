@@ -6,6 +6,7 @@ from typing import Any
 import structlog
 
 from polymarket_monitor_engine.application.discovery import MarketDiscovery
+from polymarket_monitor_engine.application.dashboard import TerminalDashboard
 from polymarket_monitor_engine.application.monitor import SignalDetector
 from polymarket_monitor_engine.application.orderbook import OrderBookRegistry, OrderBookUpdateResult
 from polymarket_monitor_engine.application.parsers import parse_book, parse_trade
@@ -33,6 +34,9 @@ class PolymarketComponent:
         detector: SignalDetector,
         resync_on_gap: bool,
         resync_min_interval_sec: int,
+        polling_volume_threshold_usd: float,
+        polling_cooldown_sec: int,
+        dashboard: TerminalDashboard | None = None,
     ) -> None:
         self._categories = categories
         self._refresh_interval_sec = refresh_interval_sec
@@ -48,23 +52,49 @@ class PolymarketComponent:
         self._token_meta: dict[str, TokenMeta] = {}
         self._markets_by_id: dict[str, Market] = {}
         self._token_ids: list[str] = []
+        self._dashboard = dashboard
+        self._polling_volume_threshold_usd = polling_volume_threshold_usd
+        self._polling_cooldown_ms = polling_cooldown_sec * 1000
+        self._unsub_prev_volume: dict[str, float] = {}
+        self._unsub_cooldowns: dict[str, int] = {}
+        self._last_refresh_start_ms: int | None = None
 
     async def run(self) -> None:
         try:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(self._refresh_loop())
                 tg.create_task(self._consume_loop())
+                if self._dashboard is not None:
+                    tg.create_task(self._dashboard.run())
         finally:
+            if self._dashboard is not None:
+                await self._dashboard.stop()
             await self._feed.close()
 
     async def _refresh_loop(self) -> None:
         while True:
             try:
                 start_ms = self._clock.now_ms()
-                markets_by_category = await self._discovery.refresh(self._categories)
-                await self._handle_refresh(markets_by_category)
+                discovery_result = await self._discovery.refresh(self._categories)
+                await self._handle_refresh(discovery_result.markets_by_category)
+                window_sec = self._refresh_interval_sec
+                if self._last_refresh_start_ms is not None:
+                    gap_ms = max(0, start_ms - self._last_refresh_start_ms)
+                    window_sec = max(1, int(gap_ms / 1000))
+                self._last_refresh_start_ms = start_ms
+                await self._emit_unsubscribable_signals(
+                    discovery_result.unsubscribable,
+                    window_sec=window_sec,
+                )
+                if self._dashboard is not None:
+                    await self._dashboard.update_unsubscribable(
+                        discovery_result.unsubscribable,
+                        reason="无 orderbook",
+                    )
                 duration_ms = self._clock.now_ms() - start_ms
                 await self._emit_health("refresh_ok", {"duration_ms": duration_ms})
+                if self._dashboard is not None:
+                    await self._dashboard.record_refresh(duration_ms)
             except Exception as exc:  # noqa: BLE001
                 await self._emit_health("refresh_error", {"error": str(exc)})
                 logger.warning("refresh_failed", error=str(exc))
@@ -75,6 +105,8 @@ class PolymarketComponent:
             if message.kind == "trade":
                 trade = parse_trade(message.payload)
                 if trade:
+                    if self._dashboard is not None:
+                        await self._dashboard.update_trade(trade)
                     await self._detector.handle_trade(trade)
             elif message.kind == "book":
                 book = parse_book(message.payload)
@@ -82,6 +114,8 @@ class PolymarketComponent:
                     result = self._orderbooks.apply_snapshot(book, message.payload)
                     await self._handle_resync(result)
                     if not result.resync_needed:
+                        if self._dashboard is not None:
+                            await self._dashboard.update_book(book)
                         await self._detector.handle_book(book)
             elif message.kind == "market_lifecycle":
                 await self._emit_feed_lifecycle(message.payload)
@@ -90,6 +124,8 @@ class PolymarketComponent:
                     result = self._orderbooks.apply_price_change(message.payload)
                     await self._handle_resync(result)
                     if result.snapshot is not None and not result.resync_needed:
+                        if self._dashboard is not None:
+                            await self._dashboard.update_book(result.snapshot)
                         await self._detector.handle_book(result.snapshot)
                 else:
                     logger.debug("feed_price_update", kind=message.kind)
@@ -106,6 +142,8 @@ class PolymarketComponent:
 
         token_meta = self._build_token_meta(markets_by_category)
         self._detector.update_registry(token_meta)
+        if self._dashboard is not None:
+            await self._dashboard.update_registry(token_meta)
 
         token_ids = sorted(token_meta.keys())
         if token_ids != self._token_ids:
@@ -219,6 +257,59 @@ class PolymarketComponent:
             metrics={"status": status, **metrics},
         )
         await self._sink.publish(event)
+
+    async def _emit_unsubscribable_signals(
+        self,
+        markets: list[Market],
+        window_sec: int,
+    ) -> None:
+        if self._polling_volume_threshold_usd <= 0:
+            return
+        threshold = self._polling_volume_threshold_usd * max(window_sec, 1) / 60.0
+        now_ms = self._clock.now_ms()
+        for market in markets:
+            if not market.market_id:
+                continue
+            volume = market.volume_24h
+            if volume is None:
+                continue
+            prev = self._unsub_prev_volume.get(market.market_id)
+            self._unsub_prev_volume[market.market_id] = volume
+            if prev is None:
+                continue
+            delta = max(0.0, volume - prev)
+            if delta < threshold:
+                continue
+            last_ts = self._unsub_cooldowns.get(market.market_id, 0)
+            if now_ms - last_ts < self._polling_cooldown_ms:
+                continue
+            self._unsub_cooldowns[market.market_id] = now_ms
+            event = DomainEvent(
+                event_id=new_event_id(),
+                ts_ms=now_ms,
+                category=market.category,
+                event_type=EventType.TRADE_SIGNAL,
+                market_id=market.market_id,
+                token_id=None,
+                side=None,
+                title=market.question,
+                topic_key=market.topic_key,
+                metrics={
+                    "signal": "web_volume_spike",
+                    "delta_volume": round(delta, 4),
+                    "volume_24h": volume,
+                    "window_sec": window_sec,
+                    "source": "gamma",
+                    "orderbook": "false",
+                },
+            )
+            logger.info(
+                "web_volume_spike_emit",
+                market_id=market.market_id,
+                delta_volume=delta,
+                window_sec=window_sec,
+            )
+            await self._sink.publish(event)
 
     async def _emit_feed_lifecycle(self, payload: dict[str, Any]) -> None:
         event_type = str(payload.get("event_type") or payload.get("type") or "").lower()

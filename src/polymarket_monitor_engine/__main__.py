@@ -13,6 +13,7 @@ from polymarket_monitor_engine.adapters.multiplex_sink import MultiplexEventSink
 from polymarket_monitor_engine.adapters.redis_sink import RedisPubSubSink
 from polymarket_monitor_engine.adapters.stdout_sink import StdoutSink
 from polymarket_monitor_engine.application.component import PolymarketComponent
+from polymarket_monitor_engine.application.dashboard import TerminalDashboard
 from polymarket_monitor_engine.application.discovery import MarketDiscovery
 from polymarket_monitor_engine.application.monitor import SignalDetector
 from polymarket_monitor_engine.config import Settings, load_settings
@@ -87,6 +88,12 @@ def build_component(settings: Settings) -> PolymarketComponent:
         rolling_enabled=settings.rolling.enabled,
         primary_selection_priority=settings.rolling.primary_selection_priority,
         max_markets_per_topic=settings.rolling.max_markets_per_topic,
+        top_enabled=settings.top.enabled,
+        top_limit=settings.top.limit,
+        top_order=settings.top.order,
+        top_ascending=settings.top.ascending,
+        top_featured_only=settings.top.featured_only,
+        top_category_name=settings.top.category_name,
     )
     detector = SignalDetector(
         clock=clock,
@@ -101,6 +108,13 @@ def build_component(settings: Settings) -> PolymarketComponent:
         major_change_source=settings.signals.major_change_source,
     )
 
+    dashboard = None
+    if settings.dashboard.enabled:
+        dashboard = TerminalDashboard(
+            refresh_hz=settings.dashboard.refresh_hz,
+            max_rows=settings.dashboard.max_rows,
+        )
+
     return PolymarketComponent(
         categories=settings.app.categories,
         refresh_interval_sec=settings.app.refresh_interval_sec,
@@ -111,6 +125,9 @@ def build_component(settings: Settings) -> PolymarketComponent:
         detector=detector,
         resync_on_gap=settings.clob.resync_on_gap,
         resync_min_interval_sec=settings.clob.resync_min_interval_sec,
+        polling_volume_threshold_usd=settings.signals.big_volume_1m_usd,
+        polling_cooldown_sec=settings.signals.cooldown_sec,
+        dashboard=dashboard,
     )
 
 
@@ -122,12 +139,19 @@ def parse_args() -> argparse.Namespace:
         default=_default_config_path(),
         help="Path to config YAML/JSON (default: config/config.yaml if present)",
     )
+    parser.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Enable live terminal dashboard",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     settings = load_settings(args.config)
+    if args.dashboard:
+        settings.dashboard.enabled = True
     configure_logging(settings.logging.level, settings.logging.style)
     silence_httpx_logs()
 

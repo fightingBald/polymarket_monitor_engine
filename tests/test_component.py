@@ -74,6 +74,8 @@ async def test_handle_refresh_emits_subscription_and_candidates() -> None:
         detector=detector,
         resync_on_gap=False,
         resync_min_interval_sec=30,
+        polling_volume_threshold_usd=1000.0,
+        polling_cooldown_sec=0,
     )
 
     markets_by_category = {
@@ -123,6 +125,8 @@ async def test_emit_feed_lifecycle_maps_payload() -> None:
         detector=detector,
         resync_on_gap=False,
         resync_min_interval_sec=30,
+        polling_volume_threshold_usd=1000.0,
+        polling_cooldown_sec=0,
     )
 
     payload = {
@@ -138,3 +142,48 @@ async def test_emit_feed_lifecycle_maps_payload() -> None:
     event = sink.events[0]
     assert event.event_type == EventType.MARKET_LIFECYCLE
     assert event.metrics["status"] == "new"
+
+
+@pytest.mark.asyncio
+async def test_emit_unsubscribable_signals_emits_web_volume_spike() -> None:
+    feed = FakeFeed()
+    sink = CaptureSink()
+    clock = FakeClock()
+    detector = SignalDetector(
+        clock=clock,
+        sink=sink,
+        big_trade_usd=1000.0,
+        big_volume_1m_usd=1000.0,
+        big_wall_size=None,
+        cooldown_sec=0,
+        major_change_pct=0.0,
+        major_change_window_sec=60,
+        major_change_min_notional=0.0,
+        major_change_source="trade",
+    )
+    component = PolymarketComponent(
+        categories=["finance"],
+        refresh_interval_sec=60,
+        discovery=None,
+        feed=feed,
+        sink=sink,
+        clock=clock,
+        detector=detector,
+        resync_on_gap=False,
+        resync_min_interval_sec=30,
+        polling_volume_threshold_usd=50.0,
+        polling_cooldown_sec=0,
+    )
+
+    market = Market(
+        market_id="m1",
+        question="Grey Market",
+        liquidity=10,
+        volume_24h=100,
+        enable_orderbook=False,
+    )
+    await component._emit_unsubscribable_signals([market], window_sec=60)
+    market.volume_24h = 200
+    await component._emit_unsubscribable_signals([market], window_sec=60)
+
+    assert any(event.metrics.get("signal") == "web_volume_spike" for event in sink.events)
