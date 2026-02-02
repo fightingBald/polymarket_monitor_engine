@@ -194,7 +194,9 @@ class SignalDetector:
             return
         if ts_ms - prev_ts > self._major_change_window_ms:
             return
-        pct_change = abs(price - prev_price) / prev_price * 100
+        delta = price - prev_price
+        pct_change_signed = delta / prev_price * 100
+        pct_change = abs(pct_change_signed)
         if pct_change < self._major_change_pct:
             return
         if self._major_change_min_notional > 0 and (
@@ -206,6 +208,8 @@ class SignalDetector:
             signal_type="major_change",
             metrics={
                 "pct_change": round(pct_change, 4),
+                "pct_change_signed": round(pct_change_signed, 4),
+                "direction": "up" if pct_change_signed > 0 else "down",
                 "price": price,
                 "prev_price": prev_price,
                 "window_sec": self._major_change_window_ms // 1000,

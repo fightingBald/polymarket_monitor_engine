@@ -67,6 +67,9 @@ def build_component(settings: Settings) -> PolymarketComponent:
         sinks["discord"] = DiscordWebhookSink(
             max_retries=settings.sinks.discord.max_retries,
             timeout_sec=settings.sinks.discord.timeout_sec,
+            aggregate_multi_outcome=settings.sinks.discord.aggregate_multi_outcome,
+            aggregate_window_sec=settings.sinks.discord.aggregate_window_sec,
+            aggregate_max_items=settings.sinks.discord.aggregate_max_items,
         )
 
     sink = MultiplexEventSink(

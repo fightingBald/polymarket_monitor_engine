@@ -204,4 +204,6 @@ async def test_major_change_emits_price_signal() -> None:
     trade2 = TradeTick(token_id="token-1", price=1.2, size=10.0, ts_ms=clock.now_ms())
     await detector.handle_trade(trade2)
 
-    assert any(event.event_type == EventType.TRADE_SIGNAL for event in sink.events)
+    major_events = [event for event in sink.events if event.event_type == EventType.TRADE_SIGNAL]
+    assert major_events
+    assert "pct_change_signed" in major_events[0].metrics

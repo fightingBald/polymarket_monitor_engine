@@ -14,10 +14,23 @@ logger = structlog.get_logger(__name__)
 
 
 class DiscordWebhookSink:
-    def __init__(self, max_retries: int, timeout_sec: float) -> None:
+    def __init__(
+        self,
+        max_retries: int,
+        timeout_sec: float,
+        aggregate_multi_outcome: bool = True,
+        aggregate_window_sec: float = 2.0,
+        aggregate_max_items: int = 5,
+    ) -> None:
         webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
         self._webhook_url = webhook_url
         self._max_retries = max(0, int(max_retries))
+        self._aggregate_multi_outcome = aggregate_multi_outcome
+        self._aggregate_window_sec = max(0.2, float(aggregate_window_sec))
+        self._aggregate_max_items = max(1, int(aggregate_max_items))
+        self._pending: dict[tuple[str, str], list[DomainEvent]] = {}
+        self._pending_tasks: dict[tuple[str, str], asyncio.Task[None]] = {}
+        self._lock = asyncio.Lock()
         self._client: httpx.AsyncClient | None = None
         self._enabled = bool(webhook_url)
         if self._enabled:
@@ -28,7 +41,45 @@ class DiscordWebhookSink:
     async def publish(self, event: DomainEvent) -> None:
         if not self._enabled or self._client is None:
             return
+        if self._should_aggregate(event):
+            await self._enqueue(event)
+            return
         payload = self._build_payload(event)
+        await self._post_payload(payload)
+
+    def _should_aggregate(self, event: DomainEvent) -> bool:
+        if not self._aggregate_multi_outcome:
+            return False
+        if event.event_type != EventType.TRADE_SIGNAL:
+            return False
+        signal = str(event.metrics.get("signal") or "")
+        if signal not in {"major_change", "big_trade", "volume_spike_1m"}:
+            return False
+        if not event.market_id or not event.side:
+            return False
+        side = event.side.upper()
+        if side in {"YES", "NO"}:
+            return False
+        return True
+
+    async def _enqueue(self, event: DomainEvent) -> None:
+        key = (event.market_id or "n/a", str(event.metrics.get("signal") or "signal"))
+        async with self._lock:
+            self._pending.setdefault(key, []).append(event)
+            if key not in self._pending_tasks:
+                self._pending_tasks[key] = asyncio.create_task(self._flush_after(key))
+
+    async def _flush_after(self, key: tuple[str, str]) -> None:
+        await asyncio.sleep(self._aggregate_window_sec)
+        async with self._lock:
+            events = self._pending.pop(key, [])
+            self._pending_tasks.pop(key, None)
+        if not events:
+            return
+        payload = self._build_aggregate_payload(events)
+        await self._post_payload(payload)
+
+    async def _post_payload(self, payload: dict) -> None:
         attempt = 0
         while True:
             try:
@@ -60,6 +111,10 @@ class DiscordWebhookSink:
     def _build_payload(event: DomainEvent) -> dict:
         embed = _build_embed(event)
         return {"embeds": [embed]} if embed else {"content": _fallback_text(event)}
+
+    def _build_aggregate_payload(self, events: list[DomainEvent]) -> dict:
+        embed = _build_aggregate_embed(events, max_items=self._aggregate_max_items)
+        return {"embeds": [embed]} if embed else {"content": _fallback_text(events[0])}
 
 
 def _build_embed(event: DomainEvent) -> dict | None:
@@ -197,6 +252,43 @@ def _build_embed(event: DomainEvent) -> dict | None:
     }
 
 
+def _build_aggregate_embed(events: list[DomainEvent], max_items: int) -> dict | None:
+    if not events:
+        return None
+    latest_ts_ms = max(event.ts_ms for event in events)
+    ts = datetime.fromtimestamp(latest_ts_ms / 1000, tz=UTC)
+    event = events[0]
+    market = event.title or event.topic_key or "(unknown market)"
+    market_id = event.market_id or "n/a"
+    category = event.category or "n/a"
+    signal = str(event.metrics.get("signal") or "signal")
+
+    lines = _aggregate_lines(events, signal, max_items)
+    summary = f"{market} | {signal} | {len(events)} 个结果触发"
+    fields = [
+        {"name": "摘要", "value": summary, "inline": False},
+        {"name": "明细", "value": "\n".join(lines), "inline": False},
+        {"name": "分类", "value": category, "inline": True},
+    ]
+    window = event.metrics.get("window_sec")
+    source = event.metrics.get("source")
+    if window is not None:
+        fields.append({"name": "窗口", "value": f"{window}s", "inline": True})
+    if source is not None:
+        fields.append({"name": "来源", "value": str(source), "inline": True})
+    if market_id != "n/a":
+        fields.append({"name": "市场ID", "value": market_id, "inline": False})
+
+    return {
+        "title": _aggregate_title(signal),
+        "color": _aggregate_color(events, signal),
+        "description": market,
+        "fields": fields,
+        "url": _market_url(market_id, market),
+        "timestamp": ts.isoformat(),
+    }
+
+
 def _fallback_text(event: DomainEvent) -> str:
     ts = datetime.fromtimestamp(event.ts_ms / 1000, tz=UTC)
     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -320,3 +412,67 @@ def _summary_volume_spike(market: str, vol: float | int | None) -> str:
 def _summary_web_volume(market: str, delta: float | int | None, window: int | None) -> str:
     window_text = f"{window}s" if window is not None else "n/a"
     return f"{market} | 灰盘放量 {_fmt_money(delta)} / {window_text}"
+
+
+def _aggregate_lines(events: list[DomainEvent], signal: str, max_items: int) -> list[str]:
+    def sort_key(event: DomainEvent) -> float:
+        metrics = event.metrics
+        if signal == "major_change":
+            value = metrics.get("pct_change_signed") or metrics.get("pct_change") or 0.0
+            return abs(float(value))
+        if signal == "big_trade":
+            return float(metrics.get("notional") or 0.0)
+        if signal == "volume_spike_1m":
+            return float(metrics.get("vol_1m") or 0.0)
+        return 0.0
+
+    def format_line(event: DomainEvent) -> str:
+        name = event.side or "?"
+        metrics = event.metrics
+        if signal == "major_change":
+            pct_signed = float(metrics.get("pct_change_signed") or 0.0)
+            arrow = "↑" if pct_signed > 0 else "↓" if pct_signed < 0 else "→"
+            price = _fmt_price(metrics.get("price"))
+            return f"{name}: {arrow}{abs(pct_signed):.2f}% → {price}"
+        if signal == "big_trade":
+            notional = _fmt_money(metrics.get("notional"))
+            price = _fmt_price(metrics.get("price"))
+            return f"{name}: 大单 {notional} @ {price}"
+        if signal == "volume_spike_1m":
+            vol = _fmt_money(metrics.get("vol_1m"))
+            return f"{name}: 1m 放量 {vol}"
+        return f"{name}"
+
+    sorted_events = sorted(events, key=sort_key, reverse=True)
+    lines = [format_line(event) for event in sorted_events[:max_items]]
+    if len(sorted_events) > max_items:
+        lines.append(f"... 还有 {len(sorted_events) - max_items} 个结果")
+    return lines
+
+
+def _aggregate_title(signal: str) -> str:
+    if signal == "major_change":
+        return "📊 多选盘异动汇总"
+    if signal == "big_trade":
+        return "💥 多选盘大单汇总"
+    if signal == "volume_spike_1m":
+        return "📈 多选盘放量汇总"
+    return "🔔 多选盘预警汇总"
+
+
+def _aggregate_color(events: list[DomainEvent], signal: str) -> int:
+    if signal != "major_change":
+        return 0x3498DB
+    directions = []
+    for event in events:
+        value = event.metrics.get("pct_change_signed")
+        if value is None:
+            continue
+        directions.append(float(value))
+    if not directions:
+        return 0xE67E22
+    if all(val > 0 for val in directions):
+        return 0x2ECC71
+    if all(val < 0 for val in directions):
+        return 0xE74C3C
+    return 0xE67E22

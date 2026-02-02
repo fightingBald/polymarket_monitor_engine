@@ -64,6 +64,7 @@ class DashboardRowSnapshot:
     side: str | None
     subscribable: bool
     note: str | None
+    outcome_summary: str | None
     last_price: float | None
     best_bid: float | None
     best_ask: float | None
@@ -167,33 +168,44 @@ class TerminalDashboard:
             now_ms = now_ms or int(time.time() * 1000)
             rows: list[DashboardRowSnapshot] = []
             market_ids = set()
+            grouped: dict[str, list[MarketRow]] = {}
             for row in self._rows.values():
-                row.window.trim(now_ms - 60_000)
-                last_trade_age = (
-                    (now_ms - row.last_trade_ts) / 1000 if row.last_trade_ts else None
-                )
-                last_book_age = (
-                    (now_ms - row.last_book_ts) / 1000 if row.last_book_ts else None
-                )
-                rows.append(
-                    DashboardRowSnapshot(
-                        token_id=row.token_id,
-                        market_id=row.market_id,
-                        title=row.title,
-                        category=row.category,
-                        side=row.side,
-                        subscribable=True,
-                        note=None,
-                        last_price=row.last_trade_price or row.mid,
-                        best_bid=row.best_bid,
-                        best_ask=row.best_ask,
-                        vol_1m=row.window.total,
-                        last_trade_notional=row.last_trade_notional,
-                        last_trade_age_s=last_trade_age,
-                        last_book_age_s=last_book_age,
-                    )
-                )
-                market_ids.add(row.market_id)
+                grouped.setdefault(row.market_id, []).append(row)
+
+            for market_id, group in grouped.items():
+                for row in group:
+                    row.window.trim(now_ms - 60_000)
+                if _is_multi_outcome(group):
+                    rows.append(_build_multi_row(group, now_ms))
+                    market_ids.add(market_id)
+                else:
+                    for row in group:
+                        last_trade_age = (
+                            (now_ms - row.last_trade_ts) / 1000 if row.last_trade_ts else None
+                        )
+                        last_book_age = (
+                            (now_ms - row.last_book_ts) / 1000 if row.last_book_ts else None
+                        )
+                        rows.append(
+                            DashboardRowSnapshot(
+                                token_id=row.token_id,
+                                market_id=row.market_id,
+                                title=row.title,
+                                category=row.category,
+                                side=row.side,
+                                subscribable=True,
+                                note=None,
+                                outcome_summary=None,
+                                last_price=row.last_trade_price or row.mid,
+                                best_bid=row.best_bid,
+                                best_ask=row.best_ask,
+                                vol_1m=row.window.total,
+                                last_trade_notional=row.last_trade_notional,
+                                last_trade_age_s=last_trade_age,
+                                last_book_age_s=last_book_age,
+                            )
+                        )
+                        market_ids.add(row.market_id)
 
             for ghost in self._ghost_rows.values():
                 rows.append(
@@ -205,6 +217,7 @@ class TerminalDashboard:
                         side=None,
                         subscribable=False,
                         note=ghost.reason,
+                        outcome_summary=None,
                         last_price=None,
                         best_bid=None,
                         best_ask=None,
@@ -274,7 +287,9 @@ class TerminalDashboard:
             return table
 
         for row in snapshot.rows:
-            if row.subscribable:
+            if row.outcome_summary:
+                side_text = Text(row.outcome_summary, style="bold white")
+            elif row.subscribable:
                 side_text = _fmt_side(row.side)
             else:
                 side_text = Text("—", style="bright_black")
@@ -284,6 +299,8 @@ class TerminalDashboard:
             last_trade = _fmt_money(row.last_trade_notional)
             update = _fmt_update(row.last_trade_age_s, row.last_book_age_s)
             status = "✅" if row.subscribable else "🚫 无 orderbook"
+            if row.note:
+                status = f"{status} {row.note}"
             style = None if row.subscribable else "bright_black"
             table.add_row(
                 row.category,
@@ -343,3 +360,71 @@ def _build_caption(snapshot: DashboardSnapshot) -> str:
     )
     uptime = f"| 运行 {snapshot.uptime_s/60:.1f}m"
     return f"{refresh} {refresh_age} {uptime}".strip()
+
+
+def _is_multi_outcome(rows: list[MarketRow]) -> bool:
+    if len(rows) > 2:
+        return True
+    if len(rows) <= 1:
+        return False
+    sides = {((row.side or "").upper()) for row in rows}
+    return not sides.issubset({"YES", "NO"})
+
+
+def _build_multi_row(rows: list[MarketRow], now_ms: int) -> DashboardRowSnapshot:
+    title = rows[0].title
+    category = rows[0].category
+    market_id = rows[0].market_id
+
+    def price_value(row: MarketRow) -> float | None:
+        return row.last_trade_price if row.last_trade_price is not None else row.mid
+
+    def sort_key(row: MarketRow) -> float:
+        value = price_value(row)
+        return value if value is not None else -1.0
+
+    sorted_rows = sorted(rows, key=sort_key, reverse=True)
+    top_row = sorted_rows[0]
+    outcome_summary = _build_outcome_summary(sorted_rows, limit=4)
+
+    trade_ages = [
+        (now_ms - row.last_trade_ts) / 1000
+        for row in rows
+        if row.last_trade_ts is not None
+    ]
+    book_ages = [
+        (now_ms - row.last_book_ts) / 1000
+        for row in rows
+        if row.last_book_ts is not None
+    ]
+
+    return DashboardRowSnapshot(
+        token_id="",
+        market_id=market_id,
+        title=title,
+        category=category,
+        side=None,
+        subscribable=True,
+        note="多选盘",
+        outcome_summary=outcome_summary,
+        last_price=price_value(top_row),
+        best_bid=top_row.best_bid,
+        best_ask=top_row.best_ask,
+        vol_1m=sum(row.window.total for row in rows),
+        last_trade_notional=max(
+            (row.last_trade_notional for row in rows if row.last_trade_notional is not None),
+            default=None,
+        ),
+        last_trade_age_s=min(trade_ages) if trade_ages else None,
+        last_book_age_s=min(book_ages) if book_ages else None,
+    )
+
+
+def _build_outcome_summary(rows: list[MarketRow], limit: int) -> str:
+    lines: list[str] = []
+    for row in rows[:limit]:
+        name = row.side or "?"
+        lines.append(f"{name} {_fmt_price(row.last_trade_price or row.mid)}")
+    if len(rows) > limit:
+        lines.append(f"... 还有 {len(rows) - limit} 个")
+    return "\n".join(lines)

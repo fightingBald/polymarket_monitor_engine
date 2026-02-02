@@ -1,170 +1,104 @@
 # Polymarket Monitor Engine ✨
 
-**TL;DR:** It watches Polymarket markets and yells when stuff moves. Big trades, volume spikes, order-book walls, fast price jumps — all normalized into DomainEvents and pushed to stdout / Redis / Discord. 🚨
+**One‑liner:** watches Polymarket, detects big moves, and blasts alerts to Discord. 🚨
 
-## Vibe Check (What it does) 👀
+## 0) Defaults (集中配置) ✅
 
-- Gamma discovery + rolling selection (liquidity/volume/keywords).
-- CLOB WebSocket feed with snapshot, ping, resubscribe on seq gaps.
-- Signals: big trade, 1‑min volume spike, big wall, major change.
-- Multiplex sinks with routes; Discord embeds with retries for 429/5xx.
-- Built‑in DNS/API diagnostics.
+Out of the box (from `config/config.yaml`):
 
-## Architecture (clean + modular) 🧩
+- Redis: **OFF**
+- Discord: **ON** (needs `DISCORD_WEBHOOK_URL`)
+- Dashboard (TUI): **ON**
+- Stdout sink: **OFF** (keeps the dashboard clean)
 
-- `domain/`: models + `DomainEvent` contract
-- `application/`: orchestration + signal detection
-- `ports/`: interfaces (catalog/feed/sink/clock)
-- `adapters/`: Gamma HTTP, CLOB WS, Redis, stdout, Discord
-- `util/`: logging, IDs, HTTP client setup
+You can override with `.env` or env vars.
 
-## Quickstart (local) 🚀
-
-**You need:** Python 3.14, `uv`, Redis (or disable Redis sink).
-
-1) Copy config:
+## 1) Quickstart 🚀
 
 ```bash
 cp config/config.example.yaml config/config.yaml
-```
-
-2) Keep secrets local via `.env` (recommended for Discord):
-
-```bash
-cp config/.env.example .env
-# edit .env and set DISCORD_WEBHOOK_URL
-```
-
-3) Bootstrap venv + deps:
-
-```bash
+cp config/.env.example .env  # put DISCORD_WEBHOOK_URL here
 make bootstrap
+make run
 ```
 
-4) Start Redis (optional if disabled in config):
+## 2) Run Modes 🧭
 
-```bash
-docker compose -f deploy/docker-compose.yml up -d redis
-```
-
-5) Run:
-
+### Normal (uses config)
 ```bash
 make run
 ```
 
-### One‑line run (quick & dirty) 😎
-
+### Dashboard + Discord only (explicit)
 ```bash
-DISCORD_WEBHOOK_URL=... PME__SINKS__DISCORD__ENABLED=true make run
+make run-dashboard
 ```
 
-### Discord‑only alerts (no Redis) 🔥
+## 3) Config (Single Source of Truth) 🧠
 
+**Primary config:** `config/config.yaml`  
+**Secrets:** `.env` (git‑ignored)  
+**Temporary override:** `PME__...` env vars
+
+Example:
 ```bash
-DISCORD_WEBHOOK_URL=... \
-  PME__SINKS__DISCORD__ENABLED=true \
-  PME__SINKS__REDIS__ENABLED=false \
-  PME__SINKS__STDOUT__ENABLED=false \
-  make run
+PME__DASHBOARD__ENABLED=true \
+PME__SINKS__DISCORD__ENABLED=true \
+PME__SINKS__REDIS__ENABLED=false \
+make run
 ```
 
-Tip: keep stdout on if you still want local logs.
+## 4) Dashboard (TUI) 🖥️
 
-### Live Terminal Dashboard (for eyeballing) 🧭
+- Live view of monitored markets + prices.
+- Multi‑outcome markets are grouped into **one row** (marked “多选盘”).
+- Markets without orderbook show **gray** as “🚫 无 orderbook”.
 
-Enable a live TUI to see monitored markets + prices in real time:
-
+Enable (if you turned it off):
 ```bash
 PME__DASHBOARD__ENABLED=true make run
 ```
 
-Or with CLI flag:
+## 5) Discord Alerts 🧷
 
-```bash
-python -m polymarket_monitor_engine --dashboard
-```
+- Uses Incoming Webhook: `DISCORD_WEBHOOK_URL`.
+- Multi‑outcome alerts are **aggregated per market** to avoid spam.
+- Adjustable:
+  - `sinks.discord.aggregate_multi_outcome`
+  - `sinks.discord.aggregate_window_sec`
+  - `sinks.discord.aggregate_max_items`
 
-Dashboard note: markets without orderbook (from website Top) show in gray as “🚫 无 orderbook” and are not subscribed.
-They still participate in alerts via refresh‑based volume deltas (signal: `web_volume_spike`).
-
-## Docker (all‑in‑one) 🐳
-
-```bash
-docker compose -f deploy/docker-compose.yml up --build
-```
-
-## Config Cheatsheet 🧠
-
-- Main file: `config/config.yaml`
-- Env overrides: `PME__` prefix + `__` nesting (loaded from `.env`)
-
-Key knobs:
-
-- `filters.*`: selection rules
-- `top.*`: include “Top” markets from the website feed
-- `signals.*`: thresholds + major change rules
-- `clob.*`: WS snapshot/ping/resync
-- `sinks.*`: enable/disable + routing
-
-Routes example (only send TradeSignal/HealthEvent to Discord):
-
-```yaml
-sinks:
-  routes:
-    TradeSignal: [stdout, redis, discord]
-    HealthEvent: [stdout, redis, discord]
-```
-
-### Monitor website “Top” markets 🏆
-
-Turn this on to pull the website Top list into monitoring (category name defaults to `top`):
+## 6) Website “Top” Markets 🏆
 
 ```bash
 PME__TOP__ENABLED=true make run
 ```
 
-Fine‑tune:
+Optional:
+- `PME__TOP__LIMIT`
+- `PME__TOP__ORDER` (default `volume24hr`)
+- `PME__TOP__FEATURED_ONLY` (closest to website Top)
 
-- `PME__TOP__LIMIT`: how many Top markets to include
-- `PME__TOP__ORDER`: ordering (default `volume24hr`)
-- `PME__TOP__FEATURED_ONLY`: only featured events (closest to website Top)
-
-## Discord Webhook 🧷
-
-- Set `DISCORD_WEBHOOK_URL` in `.env` or environment.
-- Keep it local; `.env` is git‑ignored.
-- Embed includes market title, summary, direction color (YES green / NO red), price in cents, and a link.
-
-## Logging Style (Gen‑Z by default) 😤✨
-
-- Default logs are Gen‑Z style with emoji/kaomoji.
-- Want boring logs? set:
-
-```bash
-PME__LOGGING__STYLE=plain
-```
-
-## Commands 🛠️
+## 7) Commands 🛠️
 
 ```bash
 make build
 make lint
 make test
 make run
+make run-dashboard
 make diagnose
 ```
 
-## Diagnostics 🔍
+## 8) Diagnostics 🔍
 
 ```bash
 make diagnose
 ```
 
-Checks DNS resolution, Gamma API reachability, WS TCP connectivity, and config presence.
+Checks DNS + Gamma + WS reachability and config presence.
 
-## Notes 📝
+## 9) Notes 📝
 
 - No API key required for public Gamma/CLOB endpoints.
-- Markets without `enableOrderBook=true` are skipped.
-- Chinese module docs: `src/polymarket_monitor_engine/*/README_CN.md`.
+- `enableOrderBook=false` markets are **displayed** but not subscribed; they still trigger **refresh‑based volume alerts** (`web_volume_spike`).

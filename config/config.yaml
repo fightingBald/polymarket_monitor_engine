@@ -7,7 +7,7 @@ logging:
   style: "genz"
 
 dashboard:
-  enabled: false
+  enabled: true
   refresh_hz: 2.0
   max_rows: 50
 
@@ -77,12 +77,15 @@ sinks:
     HealthEvent: ["stdout", "redis", "discord"]
   transform: "full"
   stdout:
-    enabled: true
+    enabled: false
   redis:
-    enabled: true
+    enabled: false
     url: "redis://localhost:6379/0"
     channel: "polymarket.events"
   discord:
-    enabled: false
+    enabled: true
     max_retries: 5
     timeout_sec: 10
+    aggregate_multi_outcome: true
+    aggregate_window_sec: 2.0
+    aggregate_max_items: 5

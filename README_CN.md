@@ -1,152 +1,100 @@
-# Polymarket Monitor Engine ✨（东北大白话 + Gen‑Z 版）
+# Polymarket Monitor Engine ✨（东北大白话 + Gen‑Z）
 
-**一句话：**盯盘神器，Polymarket 有大动静就“哐当”一嗓子，stdout/Redis/Discord 全都能接。🚨
+**一句话：**盯盘 + 预警，一有大动静就吼你 Discord。🚨
 
-## 它到底干啥 👀
+## 0) 默认配置（集中管理）✅
 
-- Gamma 拉盘子 + 滚动筛选（流动性/成交量/关键词）。
-- CLOB WS 订阅，断档就重订，稳的一匹。
-- 预警：大单 / 1分钟放量 / 盘口大墙 / 短时大幅波动。
-- 事件统一成 DomainEvent，往下游扔。
+默认值来自 `config/config.yaml`：
 
-## 你得准备啥 🧰
+- Redis：**默认关**
+- Discord：**默认开**（要配 `DISCORD_WEBHOOK_URL`）
+- 终端仪表盘：**默认开**
+- Stdout sink：**默认关**（不糊仪表盘）
 
-- Python 3.14
-- `uv`
-- Redis（不用就关掉 Redis sink）
+改法：
+- **长期**：改 `config/config.yaml`
+- **密钥**：放 `.env`
+- **临时**：用 `PME__...` 环境变量
 
-## 傻瓜式跑起来（照抄就行）🚀
-
-1) 先抄配置：
+## 1) 直接跑起来 🚀
 
 ```bash
 cp config/config.example.yaml config/config.yaml
-```
-
-2) Discord 想用就整 `.env`（本地留着，别提交）：
-
-```bash
-cp config/.env.example .env
-# 打开 .env，把 DISCORD_WEBHOOK_URL 填上
-```
-
-3) 一键整环境：
-
-```bash
+cp config/.env.example .env  # 把 DISCORD_WEBHOOK_URL 填上
 make bootstrap
+make run
 ```
 
-4) 起 Redis（不用就把 `sinks.redis.enabled=false`）：
+## 2) 启动方式 🧭
 
-```bash
-docker compose -f deploy/docker-compose.yml up -d redis
-```
-
-5) 开跑：
-
+### 默认（走配置）
 ```bash
 make run
 ```
 
-### 一行命令临时跑 😎
-
+### 一键“仪表盘 + Discord only”
 ```bash
-DISCORD_WEBHOOK_URL=... PME__SINKS__DISCORD__ENABLED=true make run
+make run-dashboard
 ```
 
-### 只要 Discord 预警（不启 Redis）🔥
+## 3) 配置单一入口 🧠
 
+**主配置：**`config/config.yaml`  
+**密钥：**`.env`（不会进 git）  
+**临时覆盖：**`PME__...`
+
+例子：
 ```bash
-DISCORD_WEBHOOK_URL=... \
-  PME__SINKS__DISCORD__ENABLED=true \
-  PME__SINKS__REDIS__ENABLED=false \
-  PME__SINKS__STDOUT__ENABLED=false \
-  make run
+PME__DASHBOARD__ENABLED=true \
+PME__SINKS__DISCORD__ENABLED=true \
+PME__SINKS__REDIS__ENABLED=false \
+make run
 ```
 
-提示：想本地看日志就别关 stdout。
+## 4) 仪表盘（TUI）🖥️
 
-### 终端仪表盘（看得见才安心）🧭
+- 实时看监控盘口 + 报价
+- 多选盘会**合成一行**（标“多选盘”）
+- 没 orderbook 的盘会**灰掉**标“🚫 无 orderbook”
 
-开个实时仪表盘，看它盯哪几个盘口、报价咋样：
+## 5) Discord 预警 🧷
 
-```bash
-PME__DASHBOARD__ENABLED=true make run
-```
+- 用 Incoming Webhook（`DISCORD_WEBHOOK_URL`）
+- 多选盘会**按盘聚合**，不会刷屏
+- 可调参数：
+  - `sinks.discord.aggregate_multi_outcome`
+  - `sinks.discord.aggregate_window_sec`
+  - `sinks.discord.aggregate_max_items`
 
-或者命令行开关：
-
-```bash
-python -m polymarket_monitor_engine --dashboard
-```
-
-仪表盘提示：网页 Top 里没有 orderbook 的盘子会灰掉标 “🚫 无 orderbook”，只展示不订阅，但会用刷新间隔的成交量变化触发预警（`web_volume_spike`）。
-
-## Docker 懒人包 🐳
+## 6) 网页 Top 盘子 🏆
 
 ```bash
-docker compose -f deploy/docker-compose.yml up --build
+PME__TOP__ENABLED=true make run
 ```
 
-## 重大变动规则咋配 🧠
+可调：
+- `PME__TOP__LIMIT`
+- `PME__TOP__ORDER`（默认 `volume24hr`）
+- `PME__TOP__FEATURED_ONLY`（更贴近网页 Top）
 
-主要看 `signals.*`：
-
-- `major_change_pct`：涨跌幅阈值（百分比）
-- `major_change_window_sec`：多久内算变动
-- `major_change_min_notional`：成交额阈值
-- `major_change_source`：`trade` / `book` / `any`
-
-## Discord 消息长啥样 🧷
-
-- Embed 里清清楚楚：市场名、摘要、方向、价格（统一美分）、链接。
-- 方向颜色：YES 绿 / NO 红。
-
-## 日志风格（默认 Gen‑Z）😤✨
-
-- 默认带 emoji + 颜文字。
-- 想朴素点就设：
-
-```bash
-PME__LOGGING__STYLE=plain
-```
-
-## 常用命令（记住就行）🛠️
+## 7) 常用命令 🛠️
 
 ```bash
 make build
 make lint
 make test
 make run
+make run-dashboard
 make diagnose
 ```
 
-## 一键自检 🔍
+## 8) 一键自检 🔍
 
 ```bash
 make diagnose
 ```
 
-会检查 DNS、Gamma、WS 和配置文件。
+## 9) 说明 📝
 
-## 要不要 API Key？🤔
-
-不用。Gamma + CLOB 公共接口目前都是公开的。
-
-## 目录里的中文说明 📚
-
-`src/polymarket_monitor_engine/*/README_CN.md` 都是中文设计说明。
-
-## 网页 Top 盘子也要监控？🏆
-
-一键开：
-
-```bash
-PME__TOP__ENABLED=true make run
-```
-
-可调参数（按需）：
-
-- `PME__TOP__LIMIT`：拉多少个 Top
-- `PME__TOP__ORDER`：排序字段（默认 `volume24hr`）
-- `PME__TOP__FEATURED_ONLY`：只要精选盘（更接近网页 Top）
+- 不用 API Key。
+- `enableOrderBook=false` 的盘子会显示但不订阅；仍会用刷新间隔的成交量变化触发预警（`web_volume_spike`）。

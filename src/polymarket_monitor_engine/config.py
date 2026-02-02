@@ -123,6 +123,9 @@ class DiscordSinkSettings(BaseModel):
     enabled: bool = False
     max_retries: int = 5
     timeout_sec: float = 10.0
+    aggregate_multi_outcome: bool = True
+    aggregate_window_sec: float = 2.0
+    aggregate_max_items: int = 5
 
 
 class SinkSettings(BaseModel):
