@@ -125,13 +125,23 @@ make run-dashboard
 make diagnose
 ```
 
-## 9) Diagnostics 🔍
+## 9) Alert Dataset 🧪
+
+Build a fixed test dataset under `tests/fixtures/alert_dataset.jsonl` from the Discord log:
+
+```bash
+python scripts/build_alert_dataset.py --input logs/discord.out.jsonl --output tests/fixtures/alert_dataset.jsonl
+```
+
+Add mock records by appending JSONL rows (set `expected_alert` to validate rules).
+
+## 10) Diagnostics 🔍
 
 ```bash
 make diagnose
 ```
 
-## 10) Notes 📝
+## 11) Notes 📝
 
 - No API key required for public Gamma/CLOB endpoints.
 - `enableOrderBook=false` markets are **displayed** but not subscribed; they still trigger **refresh‑based volume alerts** (`web_volume_spike`).
@@ -142,7 +152,7 @@ make diagnose
 - Tag cache uses `cachetools` TTL cache.
 - Discord category stats use `pandas` for concise grouping.
 
-## 11) Repo Layout 🧱
+## 12) Repo Layout 🧱
 
 ```text
 src/

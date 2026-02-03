@@ -119,13 +119,23 @@ make run-dashboard
 make diagnose
 ```
 
-## 9) 一键自检 🔍
+## 9) 警报测试集 🧪
+
+从 Discord 日志构建测试集（落到 `tests/fixtures/alert_dataset.jsonl`）：
+
+```bash
+python scripts/build_alert_dataset.py --input logs/discord.out.jsonl --output tests/fixtures/alert_dataset.jsonl
+```
+
+要验证规则就往这个 JSONL 里塞 mock（`expected_alert` 写 true/false）。
+
+## 10) 一键自检 🔍
 
 ```bash
 make diagnose
 ```
 
-## 10) 说明 📝
+## 11) 说明 📝
 
 - 不用 API Key。
 - `enableOrderBook=false` 的盘子会显示但不订阅；仍会用刷新间隔的成交量变化触发预警（`web_volume_spike`）。
@@ -136,7 +146,7 @@ make diagnose
 - 标签缓存用 `cachetools` TTL。
 - Discord 分类统计用 `pandas` 分组更干净。
 
-## 11) 目录结构 🧱
+## 12) 目录结构 🧱
 
 ```text
 src/

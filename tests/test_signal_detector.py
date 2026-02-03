@@ -19,7 +19,7 @@ from polymarket_monitor_engine.domain.schemas.event_payloads import (
 
 @pytest.mark.asyncio
 async def test_big_trade_emits_signal() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -62,7 +62,7 @@ async def test_big_trade_emits_signal() -> None:
 
 @pytest.mark.asyncio
 async def test_high_confidence_big_trade_suppressed() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -106,7 +106,7 @@ async def test_high_confidence_big_trade_suppressed() -> None:
 
 @pytest.mark.asyncio
 async def test_low_price_big_trade_still_emits() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -151,7 +151,7 @@ async def test_low_price_big_trade_still_emits() -> None:
 
 @pytest.mark.asyncio
 async def test_reverse_allow_threshold_can_block_underdog() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -195,7 +195,7 @@ async def test_reverse_allow_threshold_can_block_underdog() -> None:
 
 @pytest.mark.asyncio
 async def test_expired_market_trade_suppressed() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -240,7 +240,7 @@ async def test_expired_market_trade_suppressed() -> None:
 
 @pytest.mark.asyncio
 async def test_volume_spike_emits_signal() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -285,7 +285,7 @@ async def test_volume_spike_emits_signal() -> None:
 
 @pytest.mark.asyncio
 async def test_cooldown_suppresses_duplicate_signals() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -326,7 +326,7 @@ async def test_cooldown_suppresses_duplicate_signals() -> None:
 
 @pytest.mark.asyncio
 async def test_big_wall_emits_signal() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -371,7 +371,7 @@ async def test_big_wall_emits_signal() -> None:
 
 @pytest.mark.asyncio
 async def test_major_change_emits_price_signal() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -416,7 +416,7 @@ async def test_major_change_emits_price_signal() -> None:
 
 @pytest.mark.asyncio
 async def test_major_change_from_book_uses_mid_price() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -475,7 +475,7 @@ async def test_major_change_from_book_uses_mid_price() -> None:
 
 @pytest.mark.asyncio
 async def test_major_change_low_price_uses_absolute_threshold() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -518,7 +518,7 @@ async def test_major_change_low_price_uses_absolute_threshold() -> None:
 
 @pytest.mark.asyncio
 async def test_major_change_low_price_ignores_pct_threshold() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -561,7 +561,7 @@ async def test_major_change_low_price_ignores_pct_threshold() -> None:
 
 @pytest.mark.asyncio
 async def test_major_change_spread_gate_blocks_small_moves() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -618,7 +618,7 @@ async def test_major_change_spread_gate_blocks_small_moves() -> None:
 
 @pytest.mark.asyncio
 async def test_merge_big_trade_and_volume_spike_same_trade() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()
@@ -661,7 +661,7 @@ async def test_merge_big_trade_and_volume_spike_same_trade() -> None:
 
 @pytest.mark.asyncio
 async def test_merge_window_aggregates_big_trades() -> None:
-    from conftest import CaptureSink, FakeClock
+    from tests.conftest import CaptureSink, FakeClock
 
     clock = FakeClock()
     sink = CaptureSink()

@@ -42,6 +42,8 @@ GENZ_EVENT_MAP: dict[str, str] = {
     "market_lifecycle_ignored": "🙈 生命周期无关盘",
     "focus_filter": "🎯 关键词聚焦",
     "market_expired_filtered": "🧹 过期盘口清理",
+    "alert_dataset_built": "🧪 测试集炼成",
+    "alert_dataset_mock_append": "🧪 假数据塞进来",
 }
 
 
