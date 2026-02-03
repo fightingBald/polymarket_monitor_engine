@@ -18,6 +18,7 @@ GENZ_EVENT_MAP: dict[str, str] = {
     "signal_emit": "🚨 预警触发!",
     "signal_merge": "🧷 信号合体!",
     "signal_suppressed": "🧯 噪音灭火",
+    "signal_allowed": "✅ 反向放行",
     "domain_event": "📣 事件已发",
     "redis_publish": "📮 Redis 已推",
     "sink_publish_failed": "💥 下游炸了",
@@ -40,6 +41,7 @@ GENZ_EVENT_MAP: dict[str, str] = {
     "feed_message_ignored": "🙈 忽略消息",
     "market_lifecycle_ignored": "🙈 生命周期无关盘",
     "focus_filter": "🎯 关键词聚焦",
+    "market_expired_filtered": "🧹 过期盘口清理",
 }
 
 

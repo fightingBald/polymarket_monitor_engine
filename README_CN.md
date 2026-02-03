@@ -53,7 +53,7 @@ make run-dashboard
 `signals.major_change_spread_gate_k=1.5` 价差门控：小于 `k * spread` 的跳动直接过滤。🛑
 `signals.high_confidence_threshold=0.90` 过滤“高置信度吃低保”大单（max(price,1-price) >= 阈值）。🧯
 `signals.reverse_allow_threshold=0.25` 反向低价大单放行（price <= 阈值）。🛡️
-`signals.drop_expired_markets=true` 过期盘（`end_ts` 已过）直接不响。🧹
+`signals.drop_expired_markets=true` 过期盘（`end_ts` 已过）直接踢出监控 + 不响。🧹
 `signals.merge_window_sec=60` 60 秒内合并交易信号（拆单噪声克星）。🧷
 
 例子：

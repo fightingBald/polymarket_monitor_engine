@@ -7,6 +7,7 @@ import structlog
 from polymarket_monitor_engine.domain.models import Market, Tag
 from polymarket_monitor_engine.domain.selection import select_primary_markets, select_top_markets
 from polymarket_monitor_engine.ports.catalog import CatalogPort
+from polymarket_monitor_engine.ports.clock import ClockPort
 
 logger = structlog.get_logger(__name__)
 
@@ -21,6 +22,7 @@ class MarketDiscovery:
     def __init__(
         self,
         catalog: CatalogPort,
+        clock: ClockPort,
         top_k_per_category: int,
         hot_sort: list[str],
         min_liquidity: float | None,
@@ -36,8 +38,10 @@ class MarketDiscovery:
         top_ascending: bool,
         top_featured_only: bool,
         top_category_name: str,
+        drop_expired_markets: bool = True,
     ) -> None:
         self._catalog = catalog
+        self._clock = clock
         self._top_k = top_k_per_category
         self._hot_sort = hot_sort
         self._min_liquidity = min_liquidity
@@ -53,8 +57,10 @@ class MarketDiscovery:
         self._top_ascending = top_ascending
         self._top_featured_only = top_featured_only
         self._top_category_name = top_category_name
+        self._drop_expired_markets = bool(drop_expired_markets)
 
     async def refresh(self, categories: list[str]) -> DiscoveryResult:
+        now_ms = self._clock.now_ms()
         tags = await self._catalog.list_tags()
         tag_map = resolve_tag_ids(tags, categories)
         results: dict[str, list[Market]] = {}
@@ -68,6 +74,7 @@ class MarketDiscovery:
                 continue
             markets = await self._catalog.list_markets(tag_id, active=True, closed=False)
             eligible_markets = [m for m in markets if m.active and not m.closed and not m.resolved]
+            eligible_markets = self._filter_expired(eligible_markets, category, now_ms)
             eligible_markets = self._apply_focus_filter(eligible_markets, category=category)
             active_markets: list[Market] = []
             category_unsubscribable: list[Market] = []
@@ -105,6 +112,7 @@ class MarketDiscovery:
                 featured_only=self._top_featured_only,
                 closed=False,
             )
+            top_markets = self._filter_expired(top_markets, self._top_category_name, now_ms)
             top_markets = self._apply_focus_filter(
                 [m for m in top_markets if m.active and not m.closed and not m.resolved],
                 category=self._top_category_name,
@@ -148,6 +156,28 @@ class MarketDiscovery:
             after=len(filtered),
             keywords=self._focus_keywords,
         )
+        return filtered
+
+    def _filter_expired(
+        self,
+        markets: list[Market],
+        category: str,
+        now_ms: int,
+    ) -> list[Market]:
+        if not self._drop_expired_markets:
+            return markets
+        before = len(markets)
+        filtered = [market for market in markets if market.end_ts is None or market.end_ts > now_ms]
+        expired = before - len(filtered)
+        if expired > 0:
+            logger.info(
+                "market_expired_filtered",
+                category=category,
+                before=before,
+                after=len(filtered),
+                expired=expired,
+                now_ms=now_ms,
+            )
         return filtered
 
     def _matches_focus_keyword(self, question: str) -> bool:

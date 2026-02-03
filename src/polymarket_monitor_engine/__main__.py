@@ -93,6 +93,7 @@ def build_component(settings: Settings) -> PolymarketComponent:
     clock = SystemClock()
     discovery = MarketDiscovery(
         catalog=catalog,
+        clock=clock,
         top_k_per_category=settings.filters.top_k_per_category,
         hot_sort=settings.filters.hot_sort,
         min_liquidity=settings.filters.min_liquidity,
@@ -108,6 +109,7 @@ def build_component(settings: Settings) -> PolymarketComponent:
         top_ascending=settings.top.ascending,
         top_featured_only=settings.top.featured_only,
         top_category_name=settings.top.category_name,
+        drop_expired_markets=settings.signals.drop_expired_markets,
     )
     detector = SignalDetector(
         clock=clock,

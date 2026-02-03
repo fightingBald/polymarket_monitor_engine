@@ -6,6 +6,17 @@ from polymarket_monitor_engine.application.discovery import MarketDiscovery, res
 from polymarket_monitor_engine.domain.models import Market, Tag
 
 
+class FakeClock:
+    def __init__(self, now_ms: int = 1_700_000_000_000) -> None:
+        self._now = now_ms
+
+    def now_ms(self) -> int:
+        return self._now
+
+    async def sleep(self, seconds: float) -> None:  # pragma: no cover - unused here
+        self._now += int(seconds * 1000)
+
+
 class FakeCatalog:
     def __init__(
         self,
@@ -61,6 +72,7 @@ async def test_market_discovery_refresh_selects_and_sets_category() -> None:
     catalog = FakeCatalog(tags=tags, markets_by_tag={"1": markets})
     discovery = MarketDiscovery(
         catalog=catalog,
+        clock=FakeClock(),
         top_k_per_category=1,
         hot_sort=["liquidity", "volume_24h"],
         min_liquidity=None,
@@ -102,6 +114,7 @@ async def test_market_discovery_includes_top_markets() -> None:
     catalog = FakeCatalog(tags=tags, markets_by_tag={"1": markets}, top_markets=top_markets)
     discovery = MarketDiscovery(
         catalog=catalog,
+        clock=FakeClock(),
         top_k_per_category=1,
         hot_sort=["liquidity", "volume_24h"],
         min_liquidity=None,
@@ -143,6 +156,7 @@ async def test_market_discovery_collects_unsubscribable_top_markets() -> None:
     catalog = FakeCatalog(tags=tags, markets_by_tag={"1": markets}, top_markets=top_markets)
     discovery = MarketDiscovery(
         catalog=catalog,
+        clock=FakeClock(),
         top_k_per_category=1,
         hot_sort=["liquidity", "volume_24h"],
         min_liquidity=None,
@@ -186,6 +200,7 @@ async def test_market_discovery_focus_keywords_filters_markets_and_top() -> None
     catalog = FakeCatalog(tags=tags, markets_by_tag={"1": markets}, top_markets=top_markets)
     discovery = MarketDiscovery(
         catalog=catalog,
+        clock=FakeClock(),
         top_k_per_category=0,
         hot_sort=["liquidity", "volume_24h"],
         min_liquidity=None,
@@ -209,3 +224,48 @@ async def test_market_discovery_focus_keywords_filters_markets_and_top() -> None
     assert [market.market_id for market in markets_by_category["finance"]] == ["m1"]
     assert [market.market_id for market in markets_by_category["top"]] == ["m4"]
     assert [market.market_id for market in results.unsubscribable] == ["m3"]
+
+
+@pytest.mark.asyncio
+async def test_market_discovery_filters_expired_markets() -> None:
+    now_ms = 1_700_000_000_000
+    clock = FakeClock(now_ms=now_ms)
+    tags = [Tag(tag_id="1", slug="geopolitics", name="Geopolitics")]
+    markets = [
+        Market(market_id="m1", question="Expired", end_ts=now_ms - 1, liquidity=10, volume_24h=10),
+        Market(market_id="m2", question="Live", end_ts=now_ms + 60_000, liquidity=9, volume_24h=9),
+        Market(
+            market_id="m3",
+            question="Expired no ob",
+            end_ts=now_ms - 10,
+            liquidity=50,
+            volume_24h=50,
+            enable_orderbook=False,
+        ),
+    ]
+    catalog = FakeCatalog(tags=tags, markets_by_tag={"1": markets})
+    discovery = MarketDiscovery(
+        catalog=catalog,
+        clock=clock,
+        top_k_per_category=0,
+        hot_sort=["liquidity", "volume_24h"],
+        min_liquidity=None,
+        focus_keywords=[],
+        keyword_allow=[],
+        keyword_block=[],
+        rolling_enabled=False,
+        primary_selection_priority=["liquidity"],
+        max_markets_per_topic=1,
+        top_enabled=False,
+        top_limit=10,
+        top_order="volume24hr",
+        top_ascending=False,
+        top_featured_only=False,
+        top_category_name="top",
+        drop_expired_markets=True,
+    )
+
+    results = await discovery.refresh(["geopolitics"])
+    markets_by_category = results.markets_by_category
+    assert [market.market_id for market in markets_by_category["geopolitics"]] == ["m2"]
+    assert results.unsubscribable == []
