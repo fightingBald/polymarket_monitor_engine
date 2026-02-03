@@ -107,8 +107,7 @@ def test_discord_format_market_lifecycle() -> None:
         payload=MarketLifecyclePayload(status="new", end_ts=1_800_000_000_000),
     )
     embed = _build_embed(event)
-    assert embed is not None
-    assert "新盘口" in embed.get("title", "")
+    assert embed is None
 
 
 def test_discord_format_monitoring_status_category_counts() -> None:
@@ -161,11 +160,22 @@ async def test_discord_sink_logs_payload_to_file(monkeypatch, tmp_path) -> None:
     event = DomainEvent(
         event_id="evt-log",
         ts_ms=1_700_000_000_000,
-        event_type=EventType.MARKET_LIFECYCLE,
+        event_type=EventType.TRADE_SIGNAL,
         market_id="m1",
-        title="Brand New Market",
+        title="Big Move",
         category="finance",
-        metrics={"status": "new", "end_ts": 1_800_000_000_000},
+        side="YES",
+        payload=MajorChangePayload(
+            signal=SignalType.MAJOR_CHANGE,
+            pct_change=12.0,
+            pct_change_signed=12.0,
+            direction="up",
+            price=0.42,
+            prev_price=0.38,
+            window_sec=60,
+            notional=1200.0,
+            source="trade",
+        ),
     )
 
     await sink.publish(event)

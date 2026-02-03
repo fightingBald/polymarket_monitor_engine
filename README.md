@@ -83,7 +83,7 @@ PME__DASHBOARD__ENABLED=true make run
   - `sinks.discord.aggregate_max_items`
   - `sinks.discord.log_payloads` + `sinks.discord.log_payloads_path` (logs all outgoing payloads). 🧷📄
 - On startup, Discord receives a **“connected + monitored markets”** status message.
-- Lifecycle alerts are **only for monitored markets**; `removed` means **removed from monitoring**, not delisted. 🧹
+- Lifecycle/new/removed alerts are **not sent to Discord** (log only). 🧹
 - Health checks are **not** sent to Discord by default (noise‑free).
 - Category counts are **event-based** (closer to website numbers) and stats include events/markets/tokens.
 

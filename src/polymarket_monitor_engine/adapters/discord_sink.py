@@ -81,6 +81,8 @@ class DiscordWebhookSink:
     async def publish(self, event: DomainEvent) -> None:
         if not self._enabled or self._client is None:
             return
+        if event.event_type == EventType.MARKET_LIFECYCLE:
+            return
         if self._should_aggregate(event):
             await self._enqueue(event)
             return
@@ -210,6 +212,9 @@ def _build_embed(event: DomainEvent) -> dict | None:
     market_id = event.market_id or "n/a"
     side = event.side
     category = event.category or "n/a"
+
+    if event.event_type == EventType.MARKET_LIFECYCLE:
+        return None
 
     if event.event_type == EventType.MONITORING_STATUS:
         payload = event.payload if isinstance(event.payload, MonitoringStatusPayload) else None
