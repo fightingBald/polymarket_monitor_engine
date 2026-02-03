@@ -72,7 +72,7 @@ signals:
   # Drop big trades/volume spikes when price confidence is too high (0-1).
   high_confidence_threshold: 0.9
   # Always allow reverse-side big trades at/under this price (0-1).
-  reverse_allow_threshold: 0.25
+  reverse_allow_threshold: 0.40
   # Drop signals if market end_ts already passed.
   drop_expired_markets: true
   # Merge trade signals within this window (sec). 0 = no merge.

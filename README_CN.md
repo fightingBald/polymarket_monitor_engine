@@ -18,7 +18,7 @@
 ## 1) 直接跑起来 🚀
 
 ```bash
-cp config/config.example.yaml config/config.yaml
+# 直接改 config/config.yaml
 cp config/.env.example .env  # 把 DISCORD_WEBHOOK_URL 填上
 make bootstrap
 make run

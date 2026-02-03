@@ -2,7 +2,7 @@
 
 ## Local run
 
-- Configure settings in `config/config.yaml` (copy from `config/config.example.yaml`).
+- Configure settings in `config/config.yaml`.
 - Ensure Redis is running if Redis sink is enabled.
 - Start the component:
 

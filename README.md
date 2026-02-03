@@ -19,7 +19,7 @@ Override order: `config/config.yaml` → `.env` → `PME__...` env vars.
 ## 1) Quickstart 🚀
 
 ```bash
-cp config/config.example.yaml config/config.yaml
+# Edit config/config.yaml as needed
 cp config/.env.example .env  # put DISCORD_WEBHOOK_URL here
 make bootstrap
 make run

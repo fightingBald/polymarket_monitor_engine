@@ -18,4 +18,4 @@ COPY config /app/config
 
 RUN uv pip install --system -e .
 
-CMD ["python", "-m", "polymarket_monitor_engine", "--config", "/app/config/config.example.yaml"]
+CMD ["python", "-m", "polymarket_monitor_engine", "--config", "/app/config/config.yaml"]
