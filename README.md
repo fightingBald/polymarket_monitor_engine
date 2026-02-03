@@ -100,12 +100,15 @@ Optional:
 
 ## 7) Logging 🧾
 
-Default: logs go to `logs/pme.log` and the console stays quiet.  
+Default: logs go to `logs/pme-{ts}.log` (per-run timestamped file) and the console stays quiet.  
 Want console logs back?
 
 ```bash
 PME__LOGGING__CONSOLE=true make run
 ```
+
+Tip: `logging.file_path` supports `{ts}` (format: `YYYYMMDD-HHMMSS`). ✨
+On exit, logs emit `component_exit` with `exit_at` (local `HH:MM:SS`). 🧾
 
 ## 8) Commands 🛠️
 

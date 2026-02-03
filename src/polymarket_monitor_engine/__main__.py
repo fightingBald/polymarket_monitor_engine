@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from datetime import datetime
 from pathlib import Path
 
 import structlog
@@ -191,6 +192,9 @@ def main() -> None:
             asyncio.run(component.run())
     except KeyboardInterrupt:
         logger.info("component_shutdown")
+    finally:
+        exit_at = datetime.now().strftime("%H:%M:%S")
+        logger.info("component_exit", exit_at=exit_at)
 
 
 if __name__ == "__main__":

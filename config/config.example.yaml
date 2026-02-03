@@ -13,8 +13,8 @@ logging:
   style: "genz"
   # Print logs to console.
   console: false
-  # Log file path (null to disable file logging).
-  file_path: "logs/pme.log"
+  # Log file path (supports {ts} for per-run files).
+  file_path: "logs/pme-{ts}.log"
 
 # Terminal dashboard (TUI).
 dashboard:

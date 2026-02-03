@@ -95,12 +95,15 @@ PME__TOP__ENABLED=true make run
 
 ## 7) 日志 🧾
 
-默认日志写到 `logs/pme.log`，控制台安静。  
+默认日志写到 `logs/pme-{ts}.log`（每次启动单独一份），控制台安静。  
 想看日志：
 
 ```bash
 PME__LOGGING__CONSOLE=true make run
 ```
+
+小贴士：`logging.file_path` 支持 `{ts}`（格式 `YYYYMMDD-HHMMSS`）。✨
+退出时会打 `component_exit`，带 `exit_at`（本地时间 HH:MM:SS）。🧾
 
 ## 8) 常用命令 🛠️
 

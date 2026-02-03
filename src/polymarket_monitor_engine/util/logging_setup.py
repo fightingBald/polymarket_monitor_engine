@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -8,6 +9,7 @@ import structlog
 GENZ_EVENT_MAP: dict[str, str] = {
     "component_start": "🚀 开局啦 (ง •̀_•́)ง",
     "component_shutdown": "👋 收工咯 (￣▽￣)ゞ",
+    "component_exit": "⏱️ 收工时间!",
     "gamma_paginate": "🧭 拉盘数据ing (ง •̀_•́)ง",
     "category_refresh": "🧪 刷新分类 OK (•̀ᴗ•́)و",
     "top_refresh": "🏆 Top 刷新 OK (ง •̀_•́)ง",
@@ -41,6 +43,18 @@ GENZ_EVENT_MAP: dict[str, str] = {
 }
 
 
+def resolve_log_path(file_path: str | None, now: datetime | None = None) -> str | None:
+    if not file_path:
+        return None
+    ts = (now or datetime.now(tz=UTC)).strftime("%Y%m%d-%H%M%S")
+    if "{ts}" in file_path:
+        return file_path.format(ts=ts)
+    path = Path(file_path)
+    if path.suffix:
+        return str(path.with_name(f"{path.stem}-{ts}{path.suffix}"))
+    return f"{file_path}-{ts}"
+
+
 def _apply_genz_style(style: str):
     style_value = (style or "").lower()
 
@@ -69,8 +83,9 @@ def configure_logging(
     handlers: list[logging.Handler] = []
     if console:
         handlers.append(logging.StreamHandler())
-    if file_path:
-        path = Path(file_path)
+    resolved_path = resolve_log_path(file_path)
+    if resolved_path:
+        path = Path(resolved_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         handlers.append(logging.FileHandler(path, encoding="utf-8"))
     if not handlers:
