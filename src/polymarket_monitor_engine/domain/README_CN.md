@@ -13,6 +13,7 @@
 
 - `models.py`：`Market` / `TradeTick` / `BookSnapshot` 等模型。
 - `events.py`：`DomainEvent` 和 `EventType`。
+- `schemas/`：事件 payload 的 typed schema（Pydantic）。
 
 ## 怎么用 🚀
 

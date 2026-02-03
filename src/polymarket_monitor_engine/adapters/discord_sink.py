@@ -13,8 +13,36 @@ import structlog
 from slugify import slugify
 
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
+from polymarket_monitor_engine.domain.schemas.event_payloads import (
+    BigTradePayload,
+    HealthPayload,
+    MajorChangePayload,
+    MarketLifecyclePayload,
+    MonitoringStatusPayload,
+    SignalType,
+    VolumeSpikePayload,
+    WebVolumeSpikePayload,
+)
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_signal(event: DomainEvent) -> str | None:
+    payload = event.payload
+    if payload is not None and hasattr(payload, "signal"):
+        value = payload.signal
+        if isinstance(value, SignalType):
+            return value.value
+        return str(value)
+    raw = event.metrics.get("signal")
+    return str(raw) if raw is not None else None
+
+
+def _payload_or_metrics(event: DomainEvent, key: str) -> object | None:
+    payload = event.payload
+    if payload is not None and hasattr(payload, key):
+        return getattr(payload, key)
+    return event.metrics.get(key)
 
 
 class DiscordWebhookSink:
@@ -65,7 +93,7 @@ class DiscordWebhookSink:
             return False
         if event.event_type != EventType.TRADE_SIGNAL:
             return False
-        signal = str(event.metrics.get("signal") or "")
+        signal = _get_signal(event) or ""
         if signal not in {"major_change", "big_trade", "volume_spike_1m"}:
             return False
         if not event.market_id or not event.side:
@@ -74,7 +102,7 @@ class DiscordWebhookSink:
         return side not in {"YES", "NO"}
 
     async def _enqueue(self, event: DomainEvent) -> None:
-        key = (event.market_id or "n/a", str(event.metrics.get("signal") or "signal"))
+        key = (event.market_id or "n/a", str(_get_signal(event) or "signal"))
         async with self._lock:
             self._pending.setdefault(key, []).append(event)
             if key not in self._pending_tasks:
@@ -157,7 +185,7 @@ class DiscordWebhookSink:
             "event_type": event.event_type.value,
             "market_id": event.market_id,
             "category": event.category,
-            "signal": event.metrics.get("signal"),
+            "signal": _get_signal(event),
         }
 
     def _log_context_for_events(self, events: list[DomainEvent]) -> dict[str, Any]:
@@ -184,13 +212,19 @@ def _build_embed(event: DomainEvent) -> dict | None:
     category = event.category or "n/a"
 
     if event.event_type == EventType.MONITORING_STATUS:
-        metrics = event.metrics
-        status = metrics.get("status", "connected")
-        market_count = metrics.get("market_count")
-        event_count = metrics.get("event_count")
-        token_count = metrics.get("token_count")
-        unsub_count = metrics.get("unsubscribable_count")
-        unsub_event_count = metrics.get("unsubscribable_event_count")
+        payload = event.payload if isinstance(event.payload, MonitoringStatusPayload) else None
+        status = payload.status if payload else event.metrics.get("status", "connected")
+        market_count = payload.market_count if payload else event.metrics.get("market_count")
+        event_count = payload.event_count if payload else event.metrics.get("event_count")
+        token_count = payload.token_count if payload else event.metrics.get("token_count")
+        unsub_count = (
+            payload.unsubscribable_count if payload else event.metrics.get("unsubscribable_count")
+        )
+        unsub_event_count = (
+            payload.unsubscribable_event_count
+            if payload
+            else event.metrics.get("unsubscribable_event_count")
+        )
 
         raw = event.raw or {}
         subscribed = raw.get("subscribed_markets") if isinstance(raw, dict) else None
@@ -225,8 +259,9 @@ def _build_embed(event: DomainEvent) -> dict | None:
         }
 
     if event.event_type == EventType.HEALTH_EVENT:
-        status = event.metrics.get("status", "unknown")
-        duration = event.metrics.get("duration_ms")
+        payload = event.payload if isinstance(event.payload, HealthPayload) else None
+        status = payload.status if payload else event.metrics.get("status", "unknown")
+        duration = payload.duration_ms if payload else event.metrics.get("duration_ms")
         color = 0x2ECC71 if status == "refresh_ok" else 0xE74C3C
         fields = [{"name": "状态", "value": str(status), "inline": True}]
         if duration is not None:
@@ -239,9 +274,10 @@ def _build_embed(event: DomainEvent) -> dict | None:
         }
 
     if event.event_type == EventType.MARKET_LIFECYCLE:
-        status = str(event.metrics.get("status", "unknown"))
+        payload = event.payload if isinstance(event.payload, MarketLifecyclePayload) else None
+        status = str(payload.status if payload else event.metrics.get("status", "unknown"))
         status_label = status
-        end_ts = event.metrics.get("end_ts")
+        end_ts = payload.end_ts if payload else event.metrics.get("end_ts")
         title = "🔁 盘口状态变更"
         color = 0x3498DB
         if status == "new":
@@ -267,13 +303,14 @@ def _build_embed(event: DomainEvent) -> dict | None:
             "timestamp": ts.isoformat(),
         }
 
-    signal = event.metrics.get("signal", "signal")
+    signal = _get_signal(event) or "signal"
     if signal == "major_change":
-        pct = event.metrics.get("pct_change")
-        price = event.metrics.get("price")
-        prev_price = event.metrics.get("prev_price")
-        window = event.metrics.get("window_sec")
-        source = event.metrics.get("source")
+        payload = event.payload if isinstance(event.payload, MajorChangePayload) else None
+        pct = payload.pct_change if payload else _payload_or_metrics(event, "pct_change")
+        price = payload.price if payload else _payload_or_metrics(event, "price")
+        prev_price = payload.prev_price if payload else _payload_or_metrics(event, "prev_price")
+        window = payload.window_sec if payload else _payload_or_metrics(event, "window_sec")
+        source = payload.source if payload else _payload_or_metrics(event, "source")
         summary = _summary_major_change(market, pct, window, side, source)
         fields = [
             {"name": "摘要", "value": summary, "inline": False},
@@ -299,10 +336,11 @@ def _build_embed(event: DomainEvent) -> dict | None:
         }
 
     if signal == "big_trade":
-        notional = event.metrics.get("notional")
-        price = event.metrics.get("price")
-        size = event.metrics.get("size")
-        vol_1m = event.metrics.get("vol_1m")
+        payload = event.payload if isinstance(event.payload, BigTradePayload) else None
+        notional = payload.notional if payload else _payload_or_metrics(event, "notional")
+        price = payload.price if payload else _payload_or_metrics(event, "price")
+        size = payload.size if payload else _payload_or_metrics(event, "size")
+        vol_1m = payload.vol_1m if payload else _payload_or_metrics(event, "vol_1m")
         summary = _summary_big_trade(market, notional, side)
         fields = [
             {"name": "摘要", "value": summary, "inline": False},
@@ -330,7 +368,8 @@ def _build_embed(event: DomainEvent) -> dict | None:
         }
 
     if signal == "volume_spike_1m":
-        vol = event.metrics.get("vol_1m")
+        payload = event.payload if isinstance(event.payload, VolumeSpikePayload) else None
+        vol = payload.vol_1m if payload else _payload_or_metrics(event, "vol_1m")
         summary = _summary_volume_spike(market, vol)
         fields = [
             {"name": "摘要", "value": summary, "inline": False},
@@ -349,9 +388,10 @@ def _build_embed(event: DomainEvent) -> dict | None:
         }
 
     if signal == "web_volume_spike":
-        delta = event.metrics.get("delta_volume")
-        window = event.metrics.get("window_sec")
-        total = event.metrics.get("volume_24h")
+        payload = event.payload if isinstance(event.payload, WebVolumeSpikePayload) else None
+        delta = payload.delta_volume if payload else _payload_or_metrics(event, "delta_volume")
+        window = payload.window_sec if payload else _payload_or_metrics(event, "window_sec")
+        total = payload.volume_24h if payload else _payload_or_metrics(event, "volume_24h")
         summary = _summary_web_volume(market, delta, window)
         fields = [
             {"name": "摘要", "value": summary, "inline": False},
@@ -397,7 +437,7 @@ def _build_aggregate_embed(events: list[DomainEvent], max_items: int) -> dict | 
     market = event.title or event.topic_key or "(unknown market)"
     market_id = event.market_id or "n/a"
     category = event.category or "n/a"
-    signal = str(event.metrics.get("signal") or "signal")
+    signal = _get_signal(event) or "signal"
 
     lines = _aggregate_lines(events, signal, max_items)
     summary = f"{market} | {signal} | {len(events)} 个结果触发"
@@ -406,8 +446,8 @@ def _build_aggregate_embed(events: list[DomainEvent], max_items: int) -> dict | 
         {"name": "明细", "value": "\n".join(lines), "inline": False},
         {"name": "分类", "value": category, "inline": True},
     ]
-    window = event.metrics.get("window_sec")
-    source = event.metrics.get("source")
+    window = _payload_or_metrics(event, "window_sec")
+    source = _payload_or_metrics(event, "source")
     if window is not None:
         fields.append({"name": "窗口", "value": f"{window}s", "inline": True})
     if source is not None:
@@ -430,7 +470,7 @@ def _fallback_text(event: DomainEvent) -> str:
     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S UTC")
     market = event.title or event.topic_key or "(unknown market)"
     market_id = event.market_id or "n/a"
-    signal = event.metrics.get("signal", event.event_type.value)
+    signal = _get_signal(event) or event.event_type.value
     message = f"Polymarket Alert | {signal} | {market} | {market_id} | {ts_str}"
     return message[:2000]
 
@@ -651,33 +691,33 @@ def _format_monitoring_stats(
 
 def _aggregate_lines(events: list[DomainEvent], signal: str, max_items: int) -> list[str]:
     def sort_key(event: DomainEvent) -> float:
-        metrics = event.metrics
         if signal == "major_change":
-            value = metrics.get("pct_change_signed") or metrics.get("pct_change") or 0.0
-            return abs(float(value))
+            value = _payload_or_metrics(event, "pct_change_signed") or _payload_or_metrics(
+                event, "pct_change"
+            )
+            return abs(float(value or 0.0))
         if signal == "big_trade":
-            return float(metrics.get("notional") or 0.0)
+            return float(_payload_or_metrics(event, "notional") or 0.0)
         if signal == "volume_spike_1m":
-            return float(metrics.get("vol_1m") or 0.0)
+            return float(_payload_or_metrics(event, "vol_1m") or 0.0)
         return 0.0
 
     def format_line(event: DomainEvent) -> str:
         name = event.side or "?"
-        metrics = event.metrics
         if signal == "major_change":
-            pct_signed = float(metrics.get("pct_change_signed") or 0.0)
+            pct_signed = float(_payload_or_metrics(event, "pct_change_signed") or 0.0)
             arrow = "↑" if pct_signed > 0 else "↓" if pct_signed < 0 else "→"
-            price = _fmt_price(metrics.get("price"))
+            price = _fmt_price(_payload_or_metrics(event, "price"))
             return f"{name}: {arrow}{abs(pct_signed):.2f}% → {price}"
         if signal == "big_trade":
-            notional = _fmt_money(metrics.get("notional"))
-            price = _fmt_price(metrics.get("price"))
-            vol_1m = metrics.get("vol_1m")
+            notional = _fmt_money(_payload_or_metrics(event, "notional"))
+            price = _fmt_price(_payload_or_metrics(event, "price"))
+            vol_1m = _payload_or_metrics(event, "vol_1m")
             if vol_1m is not None:
                 return f"{name}: 大单 {notional} @ {price} | 1m {_fmt_money(vol_1m)}"
             return f"{name}: 大单 {notional} @ {price}"
         if signal == "volume_spike_1m":
-            vol = _fmt_money(metrics.get("vol_1m"))
+            vol = _fmt_money(_payload_or_metrics(event, "vol_1m"))
             return f"{name}: 1m 放量 {vol}"
         return f"{name}"
 
@@ -703,7 +743,7 @@ def _aggregate_color(events: list[DomainEvent], signal: str) -> int:
         return 0x3498DB
     directions = []
     for event in events:
-        value = event.metrics.get("pct_change_signed")
+        value = _payload_or_metrics(event, "pct_change_signed")
         if value is None:
             continue
         directions.append(float(value))

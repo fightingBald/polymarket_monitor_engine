@@ -6,6 +6,13 @@ from polymarket_monitor_engine.application.monitor import SignalDetector
 from polymarket_monitor_engine.application.types import TokenMeta
 from polymarket_monitor_engine.domain.events import EventType
 from polymarket_monitor_engine.domain.models import BookSnapshot, TradeTick
+from polymarket_monitor_engine.domain.schemas.event_payloads import (
+    BigTradePayload,
+    BigWallPayload,
+    MajorChangePayload,
+    SignalType,
+    VolumeSpikePayload,
+)
 
 
 @pytest.mark.asyncio
@@ -47,7 +54,8 @@ async def test_big_trade_emits_signal() -> None:
 
     assert len(sink.events) == 1
     event = sink.events[0]
-    assert event.metrics["signal"] == "big_trade"
+    assert isinstance(event.payload, BigTradePayload)
+    assert event.payload.signal == SignalType.BIG_TRADE
 
 
 @pytest.mark.asyncio
@@ -90,7 +98,9 @@ async def test_volume_spike_emits_signal() -> None:
     trade2 = TradeTick(token_id="token-1", price=2.0, size=30.0, ts_ms=clock.now_ms())
     await detector.handle_trade(trade2)
 
-    assert any(event.metrics["signal"] == "volume_spike_1m" for event in sink.events)
+    assert any(
+        isinstance(event.payload, VolumeSpikePayload) for event in sink.events if event.payload
+    )
 
 
 @pytest.mark.asyncio
@@ -176,7 +186,7 @@ async def test_big_wall_emits_signal() -> None:
     )
     await detector.handle_book(book)
 
-    assert any(event.metrics.get("signal") == "big_wall" for event in sink.events)
+    assert any(isinstance(event.payload, BigWallPayload) for event in sink.events if event.payload)
 
 
 @pytest.mark.asyncio
@@ -221,7 +231,7 @@ async def test_major_change_emits_price_signal() -> None:
 
     major_events = [event for event in sink.events if event.event_type == EventType.TRADE_SIGNAL]
     assert major_events
-    assert "pct_change_signed" in major_events[0].metrics
+    assert isinstance(major_events[0].payload, MajorChangePayload)
 
 
 @pytest.mark.asyncio
@@ -274,13 +284,13 @@ async def test_major_change_from_book_uses_mid_price() -> None:
     )
     await detector.handle_book(book2)
 
-    major_events = [event for event in sink.events if event.metrics.get("signal") == "major_change"]
+    major_events = [event for event in sink.events if isinstance(event.payload, MajorChangePayload)]
     assert major_events
     event = major_events[0]
-    assert event.metrics["source"] == "book"
-    assert event.metrics["notional"] == 0.0
-    assert event.metrics["price"] == pytest.approx(1.4)
-    assert event.metrics["prev_price"] == pytest.approx(1.1)
+    assert event.payload.source == "book"
+    assert event.payload.notional == 0.0
+    assert event.payload.price == pytest.approx(1.4)
+    assert event.payload.prev_price == pytest.approx(1.1)
 
 
 @pytest.mark.asyncio
@@ -323,7 +333,7 @@ async def test_major_change_low_price_uses_absolute_threshold() -> None:
     trade2 = TradeTick(token_id="token-1", price=0.015, size=10.0, ts_ms=clock.now_ms())
     await detector.handle_trade(trade2)
 
-    assert not any(event.metrics.get("signal") == "major_change" for event in sink.events)
+    assert not any(isinstance(event.payload, MajorChangePayload) for event in sink.events)
 
 
 @pytest.mark.asyncio
@@ -366,7 +376,7 @@ async def test_major_change_low_price_ignores_pct_threshold() -> None:
     trade2 = TradeTick(token_id="token-1", price=0.025, size=10.0, ts_ms=clock.now_ms())
     await detector.handle_trade(trade2)
 
-    assert any(event.metrics.get("signal") == "major_change" for event in sink.events)
+    assert any(isinstance(event.payload, MajorChangePayload) for event in sink.events)
 
 
 @pytest.mark.asyncio
@@ -420,9 +430,10 @@ async def test_major_change_spread_gate_blocks_small_moves() -> None:
     trade3 = TradeTick(token_id="token-1", price=0.64, size=10.0, ts_ms=clock.now_ms())
     await detector.handle_trade(trade3)
 
-    major_events = [event for event in sink.events if event.metrics.get("signal") == "major_change"]
+    major_events = [event for event in sink.events if isinstance(event.payload, MajorChangePayload)]
     assert len(major_events) == 1
-    assert major_events[0].metrics["price"] == pytest.approx(0.64)
+    assert major_events[0].payload is not None
+    assert major_events[0].payload.price == pytest.approx(0.64)
 
 
 @pytest.mark.asyncio
@@ -464,5 +475,5 @@ async def test_merge_big_trade_and_volume_spike_same_trade() -> None:
 
     assert len(sink.events) == 1
     event = sink.events[0]
-    assert event.metrics["signal"] == "big_trade"
-    assert event.metrics["vol_1m"] == pytest.approx(120.0)
+    assert isinstance(event.payload, BigTradePayload)
+    assert event.payload.vol_1m == pytest.approx(120.0)

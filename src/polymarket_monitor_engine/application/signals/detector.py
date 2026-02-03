@@ -8,6 +8,14 @@ import structlog
 from polymarket_monitor_engine.application.types import TokenMeta
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
 from polymarket_monitor_engine.domain.models import BookSnapshot, TradeTick
+from polymarket_monitor_engine.domain.schemas.event_payloads import (
+    BigTradePayload,
+    BigWallPayload,
+    MajorChangePayload,
+    SignalPayload,
+    SignalType,
+    VolumeSpikePayload,
+)
 from polymarket_monitor_engine.ports.clock import ClockPort
 from polymarket_monitor_engine.ports.sink import EventSinkPort
 from polymarket_monitor_engine.util.ids import new_event_id
@@ -109,36 +117,36 @@ class SignalEngine:
             )
             await self._emit_signal(
                 meta=meta,
-                signal_type="big_trade",
-                metrics={
-                    "notional": notional,
-                    "price": trade.price,
-                    "size": trade.size,
-                    "vol_1m": window.total,
-                },
+                payload=BigTradePayload(
+                    signal=SignalType.BIG_TRADE,
+                    notional=notional,
+                    price=trade.price,
+                    size=trade.size,
+                    vol_1m=window.total,
+                ),
             )
             return
 
         if is_big_trade:
             await self._emit_signal(
                 meta=meta,
-                signal_type="big_trade",
-                metrics={
-                    "notional": notional,
-                    "price": trade.price,
-                    "size": trade.size,
-                },
+                payload=BigTradePayload(
+                    signal=SignalType.BIG_TRADE,
+                    notional=notional,
+                    price=trade.price,
+                    size=trade.size,
+                ),
             )
 
         if is_volume_spike:
             await self._emit_signal(
                 meta=meta,
-                signal_type="volume_spike_1m",
-                metrics={
-                    "vol_1m": window.total,
-                    "price": trade.price,
-                    "size": trade.size,
-                },
+                payload=VolumeSpikePayload(
+                    signal=SignalType.VOLUME_SPIKE_1M,
+                    vol_1m=window.total,
+                    price=trade.price,
+                    size=trade.size,
+                ),
             )
 
     async def handle_book(self, book: BookSnapshot) -> None:
@@ -178,24 +186,24 @@ class SignalEngine:
             return
         await self._emit_signal(
             meta=meta,
-            signal_type="big_wall",
-            metrics={
-                "max_bid": max_bid,
-                "max_ask": max_ask,
-                "threshold": self._big_wall_size,
-            },
+            payload=BigWallPayload(
+                signal=SignalType.BIG_WALL,
+                max_bid=max_bid,
+                max_ask=max_ask,
+                threshold=float(self._big_wall_size),
+            ),
             event_type=EventType.BOOK_SIGNAL,
         )
 
     async def _emit_signal(
         self,
         meta: TokenMeta,
-        signal_type: str,
-        metrics: dict[str, float | int | str],
+        payload: SignalPayload,
+        metrics: dict[str, float | int | str] | None = None,
         event_type: EventType = EventType.TRADE_SIGNAL,
     ) -> None:
         now_ms = self._clock.now_ms()
-        cooldown_key = (meta.token_id, signal_type)
+        cooldown_key = (meta.token_id, payload.signal.value)
         last_ts = self._cooldowns.get(cooldown_key, 0)
         if now_ms - last_ts < self._cooldown_ms:
             return
@@ -211,9 +219,14 @@ class SignalEngine:
             side=meta.side,
             title=meta.title,
             topic_key=meta.topic_key,
-            metrics={"signal": signal_type, **metrics},
+            payload=payload,
+            metrics=metrics or {},
         )
-        logger.info("signal_emit", event_type=event_type, signal_type=signal_type)
+        logger.info(
+            "signal_emit",
+            event_type=event_type,
+            signal_type=payload.signal.value,
+        )
         await self._sink.publish(event)
 
     async def _maybe_emit_major_change(
@@ -274,17 +287,17 @@ class SignalEngine:
             return
         await self._emit_signal(
             meta=meta,
-            signal_type="major_change",
-            metrics={
-                "pct_change": round(pct_change, 4),
-                "pct_change_signed": round(pct_change_signed, 4),
-                "direction": "up" if pct_change_signed > 0 else "down",
-                "price": price,
-                "prev_price": prev_price,
-                "window_sec": self._major_change_window_ms // 1000,
-                "notional": notional or 0.0,
-                "source": source,
-            },
+            payload=MajorChangePayload(
+                signal=SignalType.MAJOR_CHANGE,
+                pct_change=round(pct_change, 4),
+                pct_change_signed=round(pct_change_signed, 4),
+                direction="up" if pct_change_signed > 0 else "down",
+                price=price,
+                prev_price=prev_price,
+                window_sec=self._major_change_window_ms // 1000,
+                notional=notional or 0.0,
+                source=source,
+            ),
             event_type=EventType.TRADE_SIGNAL,
         )
 

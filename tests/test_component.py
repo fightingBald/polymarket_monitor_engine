@@ -6,6 +6,11 @@ from polymarket_monitor_engine.application.component import PolymarketComponent
 from polymarket_monitor_engine.application.monitor import SignalDetector
 from polymarket_monitor_engine.domain.events import EventType
 from polymarket_monitor_engine.domain.models import Market
+from polymarket_monitor_engine.domain.schemas.event_payloads import (
+    MarketLifecyclePayload,
+    SignalType,
+    WebVolumeSpikePayload,
+)
 
 
 class FakeFeed:
@@ -147,19 +152,24 @@ async def test_emit_feed_lifecycle_maps_payload() -> None:
         }
     )
     sink.events = []
-    payload = {
-        "event_type": "new_market",
-        "market_id": "m1",
-        "asset_id": "t1",
-        "question": "Hello",
-    }
+    from polymarket_monitor_engine.ports.feed import FeedKind, MarketLifecycleMessage
 
-    await component._emit_feed_lifecycle(payload)
+    message = MarketLifecycleMessage(
+        kind=FeedKind.MARKET_LIFECYCLE,
+        status="new",
+        market_id="m1",
+        token_id="t1",
+        title="Hello",
+        raw={"event_type": "new_market"},
+    )
+
+    await component._emit_feed_lifecycle(message)
 
     assert sink.events
     event = sink.events[0]
     assert event.event_type == EventType.MARKET_LIFECYCLE
-    assert event.metrics["status"] == "new"
+    assert isinstance(event.payload, MarketLifecyclePayload)
+    assert event.payload.status == "new"
 
 
 @pytest.mark.asyncio
@@ -196,14 +206,18 @@ async def test_emit_feed_lifecycle_ignores_untracked_market() -> None:
         polling_cooldown_sec=0,
     )
 
-    payload = {
-        "event_type": "market_resolved",
-        "market_id": "m-unknown",
-        "asset_id": "t-unknown",
-        "question": "Nope",
-    }
+    from polymarket_monitor_engine.ports.feed import FeedKind, MarketLifecycleMessage
 
-    await component._emit_feed_lifecycle(payload)
+    message = MarketLifecycleMessage(
+        kind=FeedKind.MARKET_LIFECYCLE,
+        status="resolved",
+        market_id="m-unknown",
+        token_id="t-unknown",
+        title="Nope",
+        raw={"event_type": "market_resolved"},
+    )
+
+    await component._emit_feed_lifecycle(message)
 
     assert sink.events == []
 
@@ -253,4 +267,8 @@ async def test_emit_unsubscribable_signals_emits_web_volume_spike() -> None:
     market.volume_24h = 200
     await component._emit_unsubscribable_signals([market], window_sec=60)
 
-    assert any(event.metrics.get("signal") == "web_volume_spike" for event in sink.events)
+    assert any(
+        isinstance(event.payload, WebVolumeSpikePayload)
+        and event.payload.signal == SignalType.WEB_VOLUME_SPIKE
+        for event in sink.events
+    )

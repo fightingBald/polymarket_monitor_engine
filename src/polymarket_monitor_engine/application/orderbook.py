@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import structlog
 
 from polymarket_monitor_engine.domain.models import BookLevel, BookSnapshot
+from polymarket_monitor_engine.ports.feed import PriceChangeMessage
 
 logger = structlog.get_logger(__name__)
 
@@ -61,10 +61,9 @@ class OrderBookRegistry:
     def apply_snapshot(
         self,
         snapshot: BookSnapshot,
-        payload: dict[str, Any],
+        seq: int | None,
     ) -> OrderBookUpdateResult:
         token_id = snapshot.token_id
-        seq = _extract_sequence(payload)
         state = self._books.get(token_id) or OrderBookState(token_id=token_id, bids={}, asks={})
 
         resync_needed, expected = _sequence_gap(state.last_seq, seq)
@@ -89,17 +88,15 @@ class OrderBookRegistry:
         self._books[token_id] = state
         return OrderBookUpdateResult(token_id=token_id, snapshot=snapshot)
 
-    def apply_price_change(self, payload: dict[str, Any]) -> OrderBookUpdateResult:
-        token_id = _extract_token_id(payload)
-        if token_id is None:
-            return OrderBookUpdateResult(token_id=None, snapshot=None)
+    def apply_price_change(self, message: PriceChangeMessage) -> OrderBookUpdateResult:
+        token_id = message.token_id
 
         state = self._books.get(token_id)
         if state is None:
             logger.debug("orderbook_missing_snapshot", token_id=token_id)
             return OrderBookUpdateResult(token_id=token_id, snapshot=None)
 
-        seq = _extract_sequence(payload)
+        seq = message.seq
         resync_needed, expected = _sequence_gap(state.last_seq, seq)
         if resync_needed:
             logger.warning(
@@ -117,14 +114,10 @@ class OrderBookRegistry:
                 received_seq=seq,
             )
 
-        changes = _parse_price_changes(payload)
-        if not changes:
-            return OrderBookUpdateResult(token_id=token_id, snapshot=None)
-
-        for side, price, size in changes:
-            state.apply_change(side, price, size)
+        for change in message.changes:
+            state.apply_change(change.side, change.price, change.size)
         state.last_seq = seq if seq is not None else state.last_seq
-        state.last_ts_ms = _extract_ts_ms(payload) or state.last_ts_ms
+        state.last_ts_ms = message.ts_ms or state.last_ts_ms
         snapshot = state.to_snapshot()
         return OrderBookUpdateResult(token_id=token_id, snapshot=snapshot)
 
@@ -138,77 +131,3 @@ def _sequence_gap(last_seq: int | None, next_seq: int | None) -> tuple[bool, int
     if next_seq != expected:
         return True, expected
     return False, expected
-
-
-def _extract_sequence(payload: dict[str, Any]) -> int | None:
-    for key in ("sequence", "seq", "sequence_number", "seqNum"):
-        value = payload.get(key)
-        if value is None:
-            continue
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
-    return None
-
-
-def _extract_token_id(payload: dict[str, Any]) -> str | None:
-    for key in ("asset_id", "assetId", "token_id", "tokenId", "clobTokenId"):
-        value = payload.get(key)
-        if value is not None:
-            return str(value)
-    return None
-
-
-def _extract_ts_ms(payload: dict[str, Any]) -> int | None:
-    value = payload.get("ts_ms") or payload.get("timestamp") or payload.get("ts")
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _parse_price_changes(payload: dict[str, Any]) -> list[tuple[str, float, float]]:
-    raw_changes = payload.get("price_changes") or payload.get("changes") or []
-    if not isinstance(raw_changes, list):
-        return []
-
-    parsed: list[tuple[str, float, float]] = []
-    for item in raw_changes:
-        if isinstance(item, dict):
-            side_raw = item.get("side") or item.get("type")
-            side = str(side_raw or "").upper()
-            price = _to_float(_coalesce(item.get("price"), item.get("p")))
-            size = _to_float(_coalesce(item.get("size"), item.get("s"), item.get("quantity")))
-        elif isinstance(item, (list, tuple)) and len(item) >= 3:
-            side = str(item[2] or "").upper()
-            price = _to_float(item[0])
-            size = _to_float(item[1])
-        else:
-            continue
-
-        if side not in {"BUY", "SELL"}:
-            continue
-        if price is None or size is None:
-            continue
-        parsed.append((side, price, size))
-
-    return parsed
-
-
-def _to_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _coalesce(*values: Any) -> Any:
-    for value in values:
-        if value is not None:
-            return value
-    return None

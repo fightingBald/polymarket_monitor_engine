@@ -10,7 +10,7 @@ import structlog
 import websockets
 from websockets.protocol import State
 
-from polymarket_monitor_engine.ports.feed import FeedMessage
+from polymarket_monitor_engine.ports.feed import FeedMessage, normalize_message
 
 logger = structlog.get_logger(__name__)
 
@@ -97,14 +97,18 @@ class ClobWebSocketFeed:
                             if self._handle_ping_payload(item):
                                 continue
                             kind = self._detect_kind(item)
-                            yield FeedMessage(kind=kind, payload=item)
+                            message = normalize_message(kind, item)
+                            if message is not None:
+                                yield message
                         continue
                     if not isinstance(payload, dict):
                         continue
                     if self._handle_ping_payload(payload):
                         continue
                     kind = self._detect_kind(payload)
-                    yield FeedMessage(kind=kind, payload=payload)
+                    message = normalize_message(kind, payload)
+                    if message is not None:
+                        yield message
 
                 backoff = self._reconnect_backoff_sec
             except Exception as exc:  # noqa: BLE001

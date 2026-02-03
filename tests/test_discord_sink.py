@@ -11,6 +11,12 @@ from polymarket_monitor_engine.adapters.discord_sink import (
     _build_embed,
 )
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
+from polymarket_monitor_engine.domain.schemas.event_payloads import (
+    MajorChangePayload,
+    MarketLifecyclePayload,
+    MonitoringStatusPayload,
+    SignalType,
+)
 
 
 def test_discord_format_major_change() -> None:
@@ -20,15 +26,17 @@ def test_discord_format_major_change() -> None:
         event_type=EventType.TRADE_SIGNAL,
         market_id="m1",
         title="Test Market",
-        metrics={
-            "signal": "major_change",
-            "pct_change": 12.5,
-            "price": 1.2,
-            "prev_price": 1.0,
-            "window_sec": 60,
-            "notional": 0.0,
-            "source": "trade",
-        },
+        payload=MajorChangePayload(
+            signal=SignalType.MAJOR_CHANGE,
+            pct_change=12.5,
+            pct_change_signed=12.5,
+            direction="up",
+            price=1.2,
+            prev_price=1.0,
+            window_sec=60,
+            notional=0.0,
+            source="trade",
+        ),
     )
     embed = _build_embed(event)
     assert embed is not None
@@ -46,15 +54,17 @@ def test_discord_format_multi_outcome_aggregate() -> None:
             market_id="m1",
             title="Multi Market",
             side="Kevin",
-            metrics={
-                "signal": "major_change",
-                "pct_change": 12.5,
-                "pct_change_signed": 12.5,
-                "price": 0.88,
-                "prev_price": 0.78,
-                "window_sec": 60,
-                "source": "trade",
-            },
+            payload=MajorChangePayload(
+                signal=SignalType.MAJOR_CHANGE,
+                pct_change=12.5,
+                pct_change_signed=12.5,
+                direction="up",
+                price=0.88,
+                prev_price=0.78,
+                window_sec=60,
+                notional=0.0,
+                source="trade",
+            ),
         ),
         DomainEvent(
             event_id="evt-2",
@@ -63,15 +73,17 @@ def test_discord_format_multi_outcome_aggregate() -> None:
             market_id="m1",
             title="Multi Market",
             side="Judy",
-            metrics={
-                "signal": "major_change",
-                "pct_change": 8.0,
-                "pct_change_signed": -8.0,
-                "price": 0.12,
-                "prev_price": 0.13,
-                "window_sec": 60,
-                "source": "trade",
-            },
+            payload=MajorChangePayload(
+                signal=SignalType.MAJOR_CHANGE,
+                pct_change=8.0,
+                pct_change_signed=-8.0,
+                direction="down",
+                price=0.12,
+                prev_price=0.13,
+                window_sec=60,
+                notional=0.0,
+                source="trade",
+            ),
         ),
     ]
 
@@ -92,7 +104,7 @@ def test_discord_format_market_lifecycle() -> None:
         market_id="m9",
         title="Brand New Market",
         category="finance",
-        metrics={"status": "new", "end_ts": 1_800_000_000_000},
+        payload=MarketLifecyclePayload(status="new", end_ts=1_800_000_000_000),
     )
     embed = _build_embed(event)
     assert embed is not None
@@ -104,12 +116,12 @@ def test_discord_format_monitoring_status_category_counts() -> None:
         event_id="evt-4",
         ts_ms=1_700_000_000_000,
         event_type=EventType.MONITORING_STATUS,
-        metrics={
-            "status": "connected",
-            "market_count": 3,
-            "token_count": 6,
-            "unsubscribable_count": 1,
-        },
+        payload=MonitoringStatusPayload(
+            status="connected",
+            market_count=3,
+            token_count=6,
+            unsubscribable_count=1,
+        ),
         raw={
             "subscribed_markets": [
                 {"market_id": "m1", "event_id": "e1", "title": "A", "category": "finance"},

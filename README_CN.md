@@ -144,4 +144,9 @@ src/
       signals/
         detector.py
         STRATEGY_LOG.md
+    domain/
+      events.py
+      models.py
+      schemas/
+        event_payloads.py
 ```

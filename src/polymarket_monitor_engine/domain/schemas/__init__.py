@@ -1,7 +1,6 @@
-"""Package."""
+"""Typed schemas for domain events."""
 
-from .events import DomainEvent, EventType
-from .schemas import (
+from .event_payloads import (
     BigTradePayload,
     BigWallPayload,
     CandidateSelectedPayload,
@@ -18,8 +17,6 @@ from .schemas import (
 )
 
 __all__ = [
-    "DomainEvent",
-    "EventType",
     "BigTradePayload",
     "BigWallPayload",
     "CandidateSelectedPayload",

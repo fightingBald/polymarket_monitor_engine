@@ -4,6 +4,11 @@ import pytest
 
 from polymarket_monitor_engine.adapters.multiplex_sink import MultiplexEventSink
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
+from polymarket_monitor_engine.domain.schemas.event_payloads import (
+    BigTradePayload,
+    CandidateSelectedPayload,
+    SignalType,
+)
 
 
 class CaptureSink:
@@ -20,11 +25,21 @@ class FailingSink:
 
 
 def _sample_event(event_type: EventType = EventType.TRADE_SIGNAL) -> DomainEvent:
+    payload = None
+    if event_type == EventType.TRADE_SIGNAL:
+        payload = BigTradePayload(
+            signal=SignalType.BIG_TRADE,
+            notional=1.0,
+            price=1.0,
+            size=1.0,
+        )
+    elif event_type == EventType.CANDIDATE_SELECTED:
+        payload = CandidateSelectedPayload(market_count=1)
     return DomainEvent(
         event_id="evt-1",
         ts_ms=1,
         event_type=event_type,
-        metrics={"signal": "x"},
+        payload=payload,
         raw={"payload": True},
     )
 

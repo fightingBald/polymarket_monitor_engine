@@ -9,13 +9,28 @@ from polymarket_monitor_engine.application.dashboard import TerminalDashboard
 from polymarket_monitor_engine.application.discovery import MarketDiscovery
 from polymarket_monitor_engine.application.monitor import SignalDetector
 from polymarket_monitor_engine.application.orderbook import OrderBookRegistry, OrderBookUpdateResult
-from polymarket_monitor_engine.application.parsers import parse_book, parse_trade
 from polymarket_monitor_engine.application.types import TokenMeta
 from polymarket_monitor_engine.domain.events import DomainEvent, EventType
 from polymarket_monitor_engine.domain.models import Market
+from polymarket_monitor_engine.domain.schemas.event_payloads import (
+    CandidateSelectedPayload,
+    HealthPayload,
+    MarketLifecyclePayload,
+    MonitoringStatusPayload,
+    SignalType,
+    SubscriptionChangedPayload,
+    WebVolumeSpikePayload,
+)
 from polymarket_monitor_engine.domain.selection import normalize_topic
 from polymarket_monitor_engine.ports.clock import ClockPort
-from polymarket_monitor_engine.ports.feed import FeedPort
+from polymarket_monitor_engine.ports.feed import (
+    BestBidAskMessage,
+    BookMessage,
+    FeedPort,
+    MarketLifecycleMessage,
+    PriceChangeMessage,
+    TradeMessage,
+)
 from polymarket_monitor_engine.ports.sink import EventSinkPort
 from polymarket_monitor_engine.util.ids import new_event_id
 
@@ -113,35 +128,35 @@ class PolymarketComponent:
 
     async def _consume_loop(self) -> None:
         async for message in self._feed.messages():
-            if message.kind == "trade":
-                trade = parse_trade(message.payload)
-                if trade:
+            if isinstance(message, TradeMessage):
+                trade = message.trade
+                if self._dashboard is not None:
+                    await self._dashboard.update_trade(trade)
+                await self._detector.handle_trade(trade)
+                continue
+            if isinstance(message, BookMessage):
+                result = self._orderbooks.apply_snapshot(message.book, message.seq)
+                await self._handle_resync(result)
+                if not result.resync_needed:
                     if self._dashboard is not None:
-                        await self._dashboard.update_trade(trade)
-                    await self._detector.handle_trade(trade)
-            elif message.kind == "book":
-                book = parse_book(message.payload)
-                if book:
-                    result = self._orderbooks.apply_snapshot(book, message.payload)
-                    await self._handle_resync(result)
-                    if not result.resync_needed:
-                        if self._dashboard is not None:
-                            await self._dashboard.update_book(book)
-                        await self._detector.handle_book(book)
-            elif message.kind == "market_lifecycle":
-                await self._emit_feed_lifecycle(message.payload)
-            elif message.kind in {"price_change", "best_bid_ask"}:
-                if message.kind == "price_change":
-                    result = self._orderbooks.apply_price_change(message.payload)
-                    await self._handle_resync(result)
-                    if result.snapshot is not None and not result.resync_needed:
-                        if self._dashboard is not None:
-                            await self._dashboard.update_book(result.snapshot)
-                        await self._detector.handle_book(result.snapshot)
-                else:
-                    logger.debug("feed_price_update", kind=message.kind)
-            else:
-                logger.debug("feed_message_ignored", payload=message.payload)
+                        await self._dashboard.update_book(message.book)
+                    await self._detector.handle_book(message.book)
+                continue
+            if isinstance(message, PriceChangeMessage):
+                result = self._orderbooks.apply_price_change(message)
+                await self._handle_resync(result)
+                if result.snapshot is not None and not result.resync_needed:
+                    if self._dashboard is not None:
+                        await self._dashboard.update_book(result.snapshot)
+                    await self._detector.handle_book(result.snapshot)
+                continue
+            if isinstance(message, MarketLifecycleMessage):
+                await self._emit_feed_lifecycle(message)
+                continue
+            if isinstance(message, BestBidAskMessage):
+                logger.debug("feed_price_update", kind=message.kind.value)
+                continue
+            logger.debug("feed_message_ignored", payload=getattr(message, "raw", None))
 
     async def _handle_refresh(
         self,
@@ -230,7 +245,7 @@ class PolymarketComponent:
             ts_ms=self._clock.now_ms(),
             category=category,
             event_type=EventType.CANDIDATE_SELECTED,
-            metrics={"market_count": len(markets)},
+            payload=CandidateSelectedPayload(market_count=len(markets)),
             raw=payload,
         )
         await self._sink.publish(event)
@@ -240,7 +255,7 @@ class PolymarketComponent:
             event_id=new_event_id(),
             ts_ms=self._clock.now_ms(),
             event_type=EventType.SUBSCRIPTION_CHANGED,
-            metrics={"token_count": len(token_ids)},
+            payload=SubscriptionChangedPayload(token_count=len(token_ids)),
             raw={"token_ids": token_ids},
         )
         await self._sink.publish(event)
@@ -266,7 +281,7 @@ class PolymarketComponent:
             market_id=market.market_id,
             title=market.question,
             topic_key=market.topic_key,
-            metrics={"status": status, "end_ts": market.end_ts or 0},
+            payload=MarketLifecyclePayload(status=status, end_ts=market.end_ts or 0),
         )
         await self._sink.publish(event)
 
@@ -275,7 +290,11 @@ class PolymarketComponent:
             event_id=new_event_id(),
             ts_ms=self._clock.now_ms(),
             event_type=EventType.HEALTH_EVENT,
-            metrics={"status": status, **metrics},
+            payload=HealthPayload(
+                status=status,
+                duration_ms=metrics.get("duration_ms"),
+                error=metrics.get("error"),
+            ),
         )
         await self._sink.publish(event)
 
@@ -308,19 +327,19 @@ class PolymarketComponent:
             for market in unsubscribable
         )
         token_count = len(self._token_meta)
-        metrics = {
-            "status": "connected",
-            "event_count": len(subscribed_events),
-            "market_count": len(subscribed_markets),
-            "token_count": token_count,
-            "unsubscribable_count": len(unsubscribable),
-            "unsubscribable_event_count": len(unsub_events),
-        }
+        payload = MonitoringStatusPayload(
+            status="connected",
+            event_count=len(subscribed_events),
+            market_count=len(subscribed_markets),
+            token_count=token_count,
+            unsubscribable_count=len(unsubscribable),
+            unsubscribable_event_count=len(unsub_events),
+        )
         event = DomainEvent(
             event_id=new_event_id(),
             ts_ms=self._clock.now_ms(),
             event_type=EventType.MONITORING_STATUS,
-            metrics=metrics,
+            payload=payload,
             raw={
                 "subscribed_markets": [
                     {
@@ -392,14 +411,13 @@ class PolymarketComponent:
                 side=None,
                 title=market.question,
                 topic_key=market.topic_key,
-                metrics={
-                    "signal": "web_volume_spike",
-                    "delta_volume": round(delta, 4),
-                    "volume_24h": volume,
-                    "window_sec": window_sec,
-                    "source": "gamma",
-                    "orderbook": "false",
-                },
+                payload=WebVolumeSpikePayload(
+                    signal=SignalType.WEB_VOLUME_SPIKE,
+                    delta_volume=round(delta, 4),
+                    volume_24h=volume,
+                    window_sec=window_sec,
+                ),
+                metrics={"source": "gamma", "orderbook": "false"},
             )
             logger.info(
                 "web_volume_spike_emit",
@@ -409,33 +427,17 @@ class PolymarketComponent:
             )
             await self._sink.publish(event)
 
-    async def _emit_feed_lifecycle(self, payload: dict[str, Any]) -> None:
-        event_type = str(payload.get("event_type") or payload.get("type") or "").lower()
-        status = "new" if event_type == "new_market" else "resolved"
-        market_id = (
-            str(
-                payload.get("market")
-                or payload.get("conditionId")
-                or payload.get("condition_id")
-                or payload.get("market_id")
-                or payload.get("marketId")
-                or ""
-            )
-            or None
-        )
-        token_id = payload.get("asset_id") or payload.get("assetId") or payload.get("token_id")
-        if token_id is None:
-            assets_ids = payload.get("assets_ids") or payload.get("asset_ids")
-            if isinstance(assets_ids, list) and assets_ids:
-                token_id = assets_ids[0]
-        token_id = str(token_id) if token_id else None
+    async def _emit_feed_lifecycle(self, message: MarketLifecycleMessage) -> None:
+        status = message.status
+        market_id = message.market_id
+        token_id = message.token_id
         meta = self._token_meta.get(token_id) if token_id else None
         market = self._markets_by_id.get(market_id) if market_id else None
         if meta is None and market is None:
             logger.debug(
                 "market_lifecycle_ignored",
                 reason="untracked",
-                event_type=event_type,
+                event_type=status,
                 market_id=market_id,
                 token_id=token_id,
             )
@@ -448,16 +450,10 @@ class PolymarketComponent:
             event_type=EventType.MARKET_LIFECYCLE,
             market_id=market_id or (meta.market_id if meta else None),
             token_id=token_id,
-            title=(
-                meta.title
-                if meta
-                else (
-                    market.question if market else payload.get("question") or payload.get("title")
-                )
-            ),
+            title=(meta.title if meta else (market.question if market else message.title)),
             topic_key=(meta.topic_key if meta else (market.topic_key if market else None)),
-            metrics={"status": status},
-            raw=payload,
+            payload=MarketLifecyclePayload(status=status),
+            raw=message.raw,
         )
         await self._sink.publish(event)
 

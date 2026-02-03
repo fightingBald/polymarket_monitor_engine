@@ -8,6 +8,7 @@ import websockets
 from websockets.protocol import State
 
 from polymarket_monitor_engine.adapters.clob_ws import ClobWebSocketFeed
+from polymarket_monitor_engine.ports.feed import FeedKind, TradeMessage
 
 
 def _maybe_json(raw: str | bytes) -> dict | None:
@@ -73,8 +74,9 @@ async def test_clob_ws_subscribe_and_receive_trade() -> None:
     message = await asyncio.wait_for(_next_message(), timeout=5)
 
     assert message is not None
-    assert message.kind == "trade"
-    assert message.payload["asset_id"] == "token-1"
+    assert isinstance(message, TradeMessage)
+    assert message.kind == FeedKind.TRADE
+    assert message.trade.token_id == "token-1"
 
     subscribe_payloads = []
     for raw in fake_ws.sent:

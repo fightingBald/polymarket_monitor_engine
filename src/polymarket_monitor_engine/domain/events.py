@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from polymarket_monitor_engine.domain.schemas.event_payloads import EventPayload
+
 
 class EventType(StrEnum):
     CANDIDATE_SELECTED = "CandidateSelected"
@@ -28,5 +30,6 @@ class DomainEvent(BaseModel):
     side: str | None = None
     title: str | None = None
     topic_key: str | None = None
+    payload: EventPayload | None = None
     metrics: dict[str, float | int | str] = Field(default_factory=dict)
     raw: dict[str, Any] | None = None
