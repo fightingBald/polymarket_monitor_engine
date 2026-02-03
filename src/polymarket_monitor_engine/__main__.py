@@ -119,6 +119,9 @@ def build_component(settings: Settings) -> PolymarketComponent:
         major_change_window_sec=settings.signals.major_change_window_sec,
         major_change_min_notional=settings.signals.major_change_min_notional,
         major_change_source=settings.signals.major_change_source,
+        major_change_low_price_max=settings.signals.major_change_low_price_max,
+        major_change_low_price_abs=settings.signals.major_change_low_price_abs,
+        major_change_spread_gate_k=settings.signals.major_change_spread_gate_k,
     )
 
     dashboard = None

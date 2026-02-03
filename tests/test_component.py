@@ -62,6 +62,9 @@ async def test_handle_refresh_emits_subscription_and_candidates() -> None:
         major_change_window_sec=60,
         major_change_min_notional=0.0,
         major_change_source="trade",
+        major_change_low_price_max=0.0,
+        major_change_low_price_abs=0.0,
+        major_change_spread_gate_k=0.0,
     )
 
     component = PolymarketComponent(
@@ -114,6 +117,9 @@ async def test_emit_feed_lifecycle_maps_payload() -> None:
         major_change_window_sec=60,
         major_change_min_notional=0.0,
         major_change_source="trade",
+        major_change_low_price_max=0.0,
+        major_change_low_price_abs=0.0,
+        major_change_spread_gate_k=0.0,
     )
     component = PolymarketComponent(
         categories=["finance"],
@@ -172,6 +178,9 @@ async def test_emit_feed_lifecycle_ignores_untracked_market() -> None:
         major_change_window_sec=60,
         major_change_min_notional=0.0,
         major_change_source="trade",
+        major_change_low_price_max=0.0,
+        major_change_low_price_abs=0.0,
+        major_change_spread_gate_k=0.0,
     )
     component = PolymarketComponent(
         categories=["finance"],
@@ -215,6 +224,9 @@ async def test_emit_unsubscribable_signals_emits_web_volume_spike() -> None:
         major_change_window_sec=60,
         major_change_min_notional=0.0,
         major_change_source="trade",
+        major_change_low_price_max=0.0,
+        major_change_low_price_abs=0.0,
+        major_change_spread_gate_k=0.0,
     )
     component = PolymarketComponent(
         categories=["finance"],

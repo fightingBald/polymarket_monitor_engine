@@ -49,6 +49,9 @@ List‑type envs accept CSV (no JSON needed), e.g. `PME__APP__CATEGORIES=finance
 `gamma.events_limit_per_category=100` caps events per category **after full fetch + active filter + ranking** (volume → liquidity). More API calls, smaller WS payload. 🧯
 `filters.focus_keywords=trump,iran,strike` focuses monitoring to matching keywords (case‑insensitive). 🎯
 `gamma.events_sort_primary/secondary` control event ranking (default: `volume24hr` → `liquidity`). ⚡
+`signals.major_change_low_price_max=0.05` sets low‑price zone upper bound (e.g. 5¢). 🧊
+`signals.major_change_low_price_abs=0.01` sets absolute move required in low‑price zone (e.g. 1¢). 🪓
+`signals.major_change_spread_gate_k=1.5` gates moves smaller than `k * spread` (kills bounce noise). 🛑
 
 Example:
 ```bash
@@ -131,3 +134,16 @@ make diagnose
 - Config merge uses `deepmerge` (lists override instead of append).
 - Tag cache uses `cachetools` TTL cache.
 - Discord category stats use `pandas` for concise grouping.
+
+## 11) Repo Layout 🧱
+
+```text
+src/
+  polymarket_monitor_engine/
+    application/
+      component.py
+      monitor.py
+      signals/
+        detector.py
+        STRATEGY_LOG.md
+```

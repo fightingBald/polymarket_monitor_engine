@@ -77,6 +77,12 @@ signals:
   major_change_min_notional: 0.0
   # Source for major change (trade/book).
   major_change_source: "trade"
+  # Low price zone upper bound (e.g. 0.05 = 5¢).
+  major_change_low_price_max: 0.05
+  # Absolute delta required in low price zone (e.g. 0.01 = 1¢).
+  major_change_low_price_abs: 0.01
+  # Spread gate multiplier (abs price move must beat k * spread).
+  major_change_spread_gate_k: 1.5
 
 # Rolling selection by topic.
 rolling:

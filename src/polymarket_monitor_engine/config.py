@@ -75,6 +75,9 @@ class SignalSettings(BaseModel):
     major_change_window_sec: int = 60
     major_change_min_notional: float = 0.0
     major_change_source: str = "trade"
+    major_change_low_price_max: float = 0.05
+    major_change_low_price_abs: float = 0.01
+    major_change_spread_gate_k: float = 1.5
 
 
 class RollingSettings(BaseModel):

@@ -14,6 +14,8 @@ GENZ_EVENT_MAP: dict[str, str] = {
     "refresh_failed": "😵 刷新翻车了",
     "tag_not_found": "🕵️ 标签没找到 (•́⍛•̀)",
     "signal_emit": "🚨 预警触发!",
+    "signal_merge": "🧷 信号合体!",
+    "signal_suppressed": "🧯 噪音灭火",
     "domain_event": "📣 事件已发",
     "redis_publish": "📮 Redis 已推",
     "sink_publish_failed": "💥 下游炸了",

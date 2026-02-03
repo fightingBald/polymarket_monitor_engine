@@ -48,6 +48,9 @@ make run-dashboard
 `gamma.events_limit_per_category=100` 表示**先全量拉取 + 过滤 active 再按成交量→流动性排**，再限流每分类事件数（请求更重但 WS 订阅更小更稳）。🧯
 `filters.focus_keywords=trump,iran,strike` 表示只监控匹配关键词的盘口（不区分大小写）。🎯
 `gamma.events_sort_primary/secondary` 控制事件排序字段（默认 `volume24hr` → `liquidity`）。⚡
+`signals.major_change_low_price_max=0.05` 低价区上限（比如 5¢）。🧊
+`signals.major_change_low_price_abs=0.01` 低价区绝对变动阈值（比如 1¢）。🪓
+`signals.major_change_spread_gate_k=1.5` 价差门控：小于 `k * spread` 的跳动直接过滤。🛑
 
 例子：
 ```bash
@@ -69,6 +72,7 @@ make run
 - 用 Incoming Webhook（`DISCORD_WEBHOOK_URL`）
 - 多选盘会**按盘聚合**，不会刷屏
 - 可调参数：
+- 
   - `sinks.discord.aggregate_multi_outcome`
   - `sinks.discord.aggregate_window_sec`
   - `sinks.discord.aggregate_max_items`
@@ -125,3 +129,16 @@ make diagnose
 - 配置合并用 `deepmerge`（list 直接覆盖，不拼接）。
 - 标签缓存用 `cachetools` TTL。
 - Discord 分类统计用 `pandas` 分组更干净。
+
+## 11) 目录结构 🧱
+
+```text
+src/
+  polymarket_monitor_engine/
+    application/
+      component.py
+      monitor.py
+      signals/
+        detector.py
+        STRATEGY_LOG.md
+```

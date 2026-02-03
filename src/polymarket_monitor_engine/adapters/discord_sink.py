@@ -302,15 +302,22 @@ def _build_embed(event: DomainEvent) -> dict | None:
         notional = event.metrics.get("notional")
         price = event.metrics.get("price")
         size = event.metrics.get("size")
+        vol_1m = event.metrics.get("vol_1m")
         summary = _summary_big_trade(market, notional, side)
         fields = [
             {"name": "摘要", "value": summary, "inline": False},
             {"name": "价格", "value": _fmt_price(price), "inline": True},
             {"name": "数量", "value": _fmt_float(size), "inline": True},
             {"name": "成交额", "value": _fmt_money(notional), "inline": True},
-            {"name": "方向", "value": _fmt_side(side), "inline": True},
-            {"name": "分类", "value": category, "inline": True},
         ]
+        if vol_1m is not None:
+            fields.append({"name": "1m 放量", "value": _fmt_money(vol_1m), "inline": True})
+        fields.extend(
+            [
+                {"name": "方向", "value": _fmt_side(side), "inline": True},
+                {"name": "分类", "value": category, "inline": True},
+            ]
+        )
         if market_id != "n/a":
             fields.append({"name": "市场ID", "value": market_id, "inline": False})
         return {
@@ -665,6 +672,9 @@ def _aggregate_lines(events: list[DomainEvent], signal: str, max_items: int) -> 
         if signal == "big_trade":
             notional = _fmt_money(metrics.get("notional"))
             price = _fmt_price(metrics.get("price"))
+            vol_1m = metrics.get("vol_1m")
+            if vol_1m is not None:
+                return f"{name}: 大单 {notional} @ {price} | 1m {_fmt_money(vol_1m)}"
             return f"{name}: 大单 {notional} @ {price}"
         if signal == "volume_spike_1m":
             vol = _fmt_money(metrics.get("vol_1m"))
