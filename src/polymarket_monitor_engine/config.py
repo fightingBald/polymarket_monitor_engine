@@ -71,6 +71,10 @@ class SignalSettings(BaseModel):
     big_volume_1m_usd: float = 25_000.0
     big_wall_size: float | None = None
     cooldown_sec: int = 120
+    high_confidence_threshold: float = 0.90
+    reverse_allow_threshold: float = 0.25
+    drop_expired_markets: bool = True
+    merge_window_sec: float = 60.0
     major_change_pct: float = 5.0
     major_change_window_sec: int = 60
     major_change_min_notional: float = 0.0

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from polymarket_monitor_engine.application.monitor import SignalDetector
@@ -56,6 +58,184 @@ async def test_big_trade_emits_signal() -> None:
     event = sink.events[0]
     assert isinstance(event.payload, BigTradePayload)
     assert event.payload.signal == SignalType.BIG_TRADE
+
+
+@pytest.mark.asyncio
+async def test_high_confidence_big_trade_suppressed() -> None:
+    from conftest import CaptureSink, FakeClock
+
+    clock = FakeClock()
+    sink = CaptureSink()
+    detector = SignalDetector(
+        clock=clock,
+        sink=sink,
+        big_trade_usd=100.0,
+        big_volume_1m_usd=1000.0,
+        big_wall_size=None,
+        cooldown_sec=0,
+        major_change_pct=0.0,
+        major_change_window_sec=60,
+        major_change_min_notional=0.0,
+        major_change_source="trade",
+        major_change_low_price_max=0.0,
+        major_change_low_price_abs=0.0,
+        major_change_spread_gate_k=0.0,
+        high_confidence_threshold=0.9,
+        reverse_allow_threshold=0.25,
+        merge_window_sec=0,
+        drop_expired_markets=True,
+    )
+    detector.update_registry(
+        {
+            "token-1": TokenMeta(
+                token_id="token-1",
+                market_id="m1",
+                category="finance",
+                title="Test",
+                side="YES",
+                topic_key="test",
+            )
+        }
+    )
+
+    trade = TradeTick(token_id="token-1", price=0.95, size=200.0, ts_ms=clock.now_ms())
+    await detector.handle_trade(trade)
+
+    assert not sink.events
+
+
+@pytest.mark.asyncio
+async def test_low_price_big_trade_still_emits() -> None:
+    from conftest import CaptureSink, FakeClock
+
+    clock = FakeClock()
+    sink = CaptureSink()
+    detector = SignalDetector(
+        clock=clock,
+        sink=sink,
+        big_trade_usd=100.0,
+        big_volume_1m_usd=1000.0,
+        big_wall_size=None,
+        cooldown_sec=0,
+        major_change_pct=0.0,
+        major_change_window_sec=60,
+        major_change_min_notional=0.0,
+        major_change_source="trade",
+        major_change_low_price_max=0.0,
+        major_change_low_price_abs=0.0,
+        major_change_spread_gate_k=0.0,
+        high_confidence_threshold=0.9,
+        reverse_allow_threshold=0.25,
+        merge_window_sec=0,
+        drop_expired_markets=True,
+    )
+    detector.update_registry(
+        {
+            "token-1": TokenMeta(
+                token_id="token-1",
+                market_id="m1",
+                category="finance",
+                title="Test",
+                side="NO",
+                topic_key="test",
+            )
+        }
+    )
+
+    trade = TradeTick(token_id="token-1", price=0.05, size=3000.0, ts_ms=clock.now_ms())
+    await detector.handle_trade(trade)
+
+    assert len(sink.events) == 1
+    assert isinstance(sink.events[0].payload, BigTradePayload)
+
+
+@pytest.mark.asyncio
+async def test_reverse_allow_threshold_can_block_underdog() -> None:
+    from conftest import CaptureSink, FakeClock
+
+    clock = FakeClock()
+    sink = CaptureSink()
+    detector = SignalDetector(
+        clock=clock,
+        sink=sink,
+        big_trade_usd=100.0,
+        big_volume_1m_usd=1000.0,
+        big_wall_size=None,
+        cooldown_sec=0,
+        major_change_pct=0.0,
+        major_change_window_sec=60,
+        major_change_min_notional=0.0,
+        major_change_source="trade",
+        major_change_low_price_max=0.0,
+        major_change_low_price_abs=0.0,
+        major_change_spread_gate_k=0.0,
+        high_confidence_threshold=0.9,
+        reverse_allow_threshold=0.05,
+        merge_window_sec=0,
+        drop_expired_markets=True,
+    )
+    detector.update_registry(
+        {
+            "token-1": TokenMeta(
+                token_id="token-1",
+                market_id="m1",
+                category="finance",
+                title="Test",
+                side="NO",
+                topic_key="test",
+            )
+        }
+    )
+
+    trade = TradeTick(token_id="token-1", price=0.08, size=3000.0, ts_ms=clock.now_ms())
+    await detector.handle_trade(trade)
+
+    assert not sink.events
+
+
+@pytest.mark.asyncio
+async def test_expired_market_trade_suppressed() -> None:
+    from conftest import CaptureSink, FakeClock
+
+    clock = FakeClock()
+    sink = CaptureSink()
+    detector = SignalDetector(
+        clock=clock,
+        sink=sink,
+        big_trade_usd=100.0,
+        big_volume_1m_usd=1000.0,
+        big_wall_size=None,
+        cooldown_sec=0,
+        major_change_pct=0.0,
+        major_change_window_sec=60,
+        major_change_min_notional=0.0,
+        major_change_source="trade",
+        major_change_low_price_max=0.0,
+        major_change_low_price_abs=0.0,
+        major_change_spread_gate_k=0.0,
+        high_confidence_threshold=0.0,
+        reverse_allow_threshold=0.0,
+        merge_window_sec=0,
+        drop_expired_markets=True,
+    )
+    detector.update_registry(
+        {
+            "token-1": TokenMeta(
+                token_id="token-1",
+                market_id="m1",
+                category="finance",
+                title="Test",
+                side="YES",
+                topic_key="test",
+                end_ts=clock.now_ms() - 1,
+            )
+        }
+    )
+
+    trade = TradeTick(token_id="token-1", price=0.4, size=400.0, ts_ms=clock.now_ms())
+    await detector.handle_trade(trade)
+
+    assert not sink.events
 
 
 @pytest.mark.asyncio
@@ -477,3 +657,54 @@ async def test_merge_big_trade_and_volume_spike_same_trade() -> None:
     event = sink.events[0]
     assert isinstance(event.payload, BigTradePayload)
     assert event.payload.vol_1m == pytest.approx(120.0)
+
+
+@pytest.mark.asyncio
+async def test_merge_window_aggregates_big_trades() -> None:
+    from conftest import CaptureSink, FakeClock
+
+    clock = FakeClock()
+    sink = CaptureSink()
+    detector = SignalDetector(
+        clock=clock,
+        sink=sink,
+        big_trade_usd=100.0,
+        big_volume_1m_usd=1000.0,
+        big_wall_size=None,
+        cooldown_sec=0,
+        major_change_pct=0.0,
+        major_change_window_sec=60,
+        major_change_min_notional=0.0,
+        major_change_source="trade",
+        major_change_low_price_max=0.0,
+        major_change_low_price_abs=0.0,
+        major_change_spread_gate_k=0.0,
+        high_confidence_threshold=0.0,
+        merge_window_sec=0.05,
+        drop_expired_markets=True,
+    )
+    detector.update_registry(
+        {
+            "token-1": TokenMeta(
+                token_id="token-1",
+                market_id="m1",
+                category="finance",
+                title="Test",
+                side="YES",
+                topic_key="test",
+            )
+        }
+    )
+
+    trade1 = TradeTick(token_id="token-1", price=0.4, size=400.0, ts_ms=clock.now_ms())
+    trade2 = TradeTick(token_id="token-1", price=0.6, size=300.0, ts_ms=clock.now_ms())
+    await detector.handle_trade(trade1)
+    await detector.handle_trade(trade2)
+    await asyncio.sleep(0.06)
+
+    assert len(sink.events) == 1
+    event = sink.events[0]
+    assert isinstance(event.payload, BigTradePayload)
+    assert event.payload.notional == pytest.approx(340.0)
+    assert event.payload.size == pytest.approx(700.0)
+    assert event.payload.price == pytest.approx(340.0 / 700.0)

@@ -213,6 +213,7 @@ class PolymarketComponent:
                             title=market.question,
                             side=_normalize_side(outcome.side),
                             topic_key=topic_key,
+                            end_ts=market.end_ts,
                         )
                 else:
                     for token_id in market.token_ids:
@@ -223,6 +224,7 @@ class PolymarketComponent:
                             title=market.question,
                             side=None,
                             topic_key=topic_key,
+                            end_ts=market.end_ts,
                         )
         return mapping
 
@@ -386,6 +388,15 @@ class PolymarketComponent:
         now_ms = self._clock.now_ms()
         for market in markets:
             if not market.market_id:
+                continue
+            if market.end_ts and now_ms >= market.end_ts:
+                logger.info(
+                    "signal_suppressed",
+                    reason="market_expired",
+                    market_id=market.market_id,
+                    end_ts=market.end_ts,
+                    now_ms=now_ms,
+                )
                 continue
             volume = market.volume_24h
             if volume is None:

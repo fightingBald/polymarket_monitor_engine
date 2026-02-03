@@ -123,6 +123,10 @@ def build_component(settings: Settings) -> PolymarketComponent:
         major_change_low_price_max=settings.signals.major_change_low_price_max,
         major_change_low_price_abs=settings.signals.major_change_low_price_abs,
         major_change_spread_gate_k=settings.signals.major_change_spread_gate_k,
+        high_confidence_threshold=settings.signals.high_confidence_threshold,
+        reverse_allow_threshold=settings.signals.reverse_allow_threshold,
+        merge_window_sec=settings.signals.merge_window_sec,
+        drop_expired_markets=settings.signals.drop_expired_markets,
     )
 
     dashboard = None

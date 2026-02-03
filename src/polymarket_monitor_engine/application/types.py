@@ -11,3 +11,4 @@ class TokenMeta:
     title: str | None
     side: str | None
     topic_key: str | None
+    end_ts: int | None = None

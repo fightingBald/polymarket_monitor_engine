@@ -52,6 +52,10 @@ List‑type envs accept CSV (no JSON needed), e.g. `PME__APP__CATEGORIES=finance
 `signals.major_change_low_price_max=0.05` sets low‑price zone upper bound (e.g. 5¢). 🧊
 `signals.major_change_low_price_abs=0.01` sets absolute move required in low‑price zone (e.g. 1¢). 🪓
 `signals.major_change_spread_gate_k=1.5` gates moves smaller than `k * spread` (kills bounce noise). 🛑
+`signals.high_confidence_threshold=0.90` drops “high‑confidence” big trades (max(price,1-price) >= threshold). 🧯
+`signals.reverse_allow_threshold=0.25` always allows reverse‑side big trades (price <= threshold). 🛡️
+`signals.drop_expired_markets=true` drops signals after `end_ts` (expired markets). 🧹
+`signals.merge_window_sec=60` merges trade signals in a 60s window (split‑order noise killer). 🧷
 
 Example:
 ```bash

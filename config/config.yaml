@@ -69,6 +69,14 @@ signals:
   big_wall_size: null
   # Cooldown between repeated signals.
   cooldown_sec: 120
+  # Drop big trades/volume spikes when price confidence is too high (0-1).
+  high_confidence_threshold: 0.9
+  # Always allow reverse-side big trades at/under this price (0-1).
+  reverse_allow_threshold: 0.25
+  # Drop signals if market end_ts already passed.
+  drop_expired_markets: true
+  # Merge trade signals within this window (sec). 0 = no merge.
+  merge_window_sec: 60.0
   # Major price change percent threshold.
   major_change_pct: 5.0
   # Major change lookback window (sec).

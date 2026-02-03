@@ -51,6 +51,10 @@ make run-dashboard
 `signals.major_change_low_price_max=0.05` 低价区上限（比如 5¢）。🧊
 `signals.major_change_low_price_abs=0.01` 低价区绝对变动阈值（比如 1¢）。🪓
 `signals.major_change_spread_gate_k=1.5` 价差门控：小于 `k * spread` 的跳动直接过滤。🛑
+`signals.high_confidence_threshold=0.90` 过滤“高置信度吃低保”大单（max(price,1-price) >= 阈值）。🧯
+`signals.reverse_allow_threshold=0.25` 反向低价大单放行（price <= 阈值）。🛡️
+`signals.drop_expired_markets=true` 过期盘（`end_ts` 已过）直接不响。🧹
+`signals.merge_window_sec=60` 60 秒内合并交易信号（拆单噪声克星）。🧷
 
 例子：
 ```bash
@@ -72,7 +76,6 @@ make run
 - 用 Incoming Webhook（`DISCORD_WEBHOOK_URL`）
 - 多选盘会**按盘聚合**，不会刷屏
 - 可调参数：
-- 
   - `sinks.discord.aggregate_multi_outcome`
   - `sinks.discord.aggregate_window_sec`
   - `sinks.discord.aggregate_max_items`

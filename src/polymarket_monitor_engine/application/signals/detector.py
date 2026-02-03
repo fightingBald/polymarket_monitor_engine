@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from collections import deque
 from dataclasses import dataclass
+from threading import Lock
 
 import structlog
 
@@ -38,6 +40,25 @@ class TradeWindow:
             self.total -= notional
 
 
+@dataclass(slots=True)
+class TradeSignalBucket:
+    market_id: str
+    token_id: str
+    side: str | None
+    category: str
+    title: str | None
+    topic_key: str | None
+    end_ts: int | None
+    total_notional: float = 0.0
+    total_size: float = 0.0
+    last_price: float = 0.0
+    last_size: float = 0.0
+    max_vol_1m: float | None = None
+    has_big_trade: bool = False
+    has_volume_spike: bool = False
+    task: asyncio.Task[None] | None = None
+
+
 class SignalEngine:
     def __init__(
         self,
@@ -54,6 +75,10 @@ class SignalEngine:
         major_change_low_price_max: float,
         major_change_low_price_abs: float,
         major_change_spread_gate_k: float,
+        high_confidence_threshold: float = 0.0,
+        reverse_allow_threshold: float = 0.0,
+        merge_window_sec: float = 0.0,
+        drop_expired_markets: bool = True,
     ) -> None:
         self._clock = clock
         self._sink = sink
@@ -73,6 +98,12 @@ class SignalEngine:
         self._major_change_low_price_abs = max(0.0, float(major_change_low_price_abs))
         self._major_change_spread_gate_k = max(0.0, float(major_change_spread_gate_k))
         self._best_quote: dict[str, tuple[float, float]] = {}
+        self._high_confidence_threshold = min(1.0, max(0.0, float(high_confidence_threshold)))
+        self._reverse_allow_threshold = min(1.0, max(0.0, float(reverse_allow_threshold)))
+        self._merge_window_sec = max(0.0, float(merge_window_sec))
+        self._drop_expired_markets = bool(drop_expired_markets)
+        self._trade_buckets: dict[tuple[str, str], TradeSignalBucket] = {}
+        self._bucket_lock = Lock()
 
     def update_registry(self, token_meta: dict[str, TokenMeta]) -> None:
         self._token_meta = token_meta
@@ -86,13 +117,32 @@ class SignalEngine:
         self._best_quote = {
             token: quote for token, quote in self._best_quote.items() if token in token_meta
         }
+        if self._trade_buckets:
+            active_markets = {meta.market_id for meta in token_meta.values()}
+            with self._bucket_lock:
+                for key, bucket in list(self._trade_buckets.items()):
+                    if key[0] in active_markets:
+                        continue
+                    if bucket.task is not None:
+                        bucket.task.cancel()
+                    self._trade_buckets.pop(key, None)
 
     async def handle_trade(self, trade: TradeTick) -> None:
         meta = self._token_meta.get(trade.token_id)
         if meta is None:
             return
-        notional = trade.price * trade.size
         now_ms = self._clock.now_ms()
+        if self._is_market_expired(meta, now_ms):
+            logger.info(
+                "signal_suppressed",
+                reason="market_expired",
+                market_id=meta.market_id,
+                token_id=meta.token_id,
+                end_ts=meta.end_ts,
+                now_ms=now_ms,
+            )
+            return
+        notional = trade.price * trade.size
         window = self._windows.setdefault(trade.token_id, TradeWindow(entries=deque()))
         window.add(trade.ts_ms, notional)
         window.trim(now_ms - 60_000)
@@ -108,6 +158,38 @@ class SignalEngine:
 
         is_big_trade = notional >= self._big_trade_usd
         is_volume_spike = window.total >= self._big_volume_1m_usd
+        if (is_big_trade or is_volume_spike) and self._is_high_confidence_market(trade.price):
+            if not self._is_reverse_allow_price(trade.price):
+                logger.info(
+                    "signal_suppressed",
+                    reason="high_confidence",
+                    market_id=meta.market_id,
+                    token_id=meta.token_id,
+                    side=meta.side,
+                    price=trade.price,
+                    threshold=self._high_confidence_threshold,
+                )
+                return
+            logger.debug(
+                "signal_allowed",
+                reason="reverse_allow",
+                market_id=meta.market_id,
+                token_id=meta.token_id,
+                side=meta.side,
+                price=trade.price,
+                threshold=self._reverse_allow_threshold,
+            )
+
+        if self._merge_window_sec > 0 and (is_big_trade or is_volume_spike):
+            await self._enqueue_trade_bucket(
+                meta=meta,
+                trade=trade,
+                notional=notional,
+                vol_1m=window.total,
+                is_big_trade=is_big_trade,
+                is_volume_spike=is_volume_spike,
+            )
+            return
         if is_big_trade and is_volume_spike:
             logger.info(
                 "signal_merge",
@@ -153,6 +235,15 @@ class SignalEngine:
         meta = self._token_meta.get(book.token_id)
         if meta is None:
             return
+        if self._is_market_expired(meta, self._clock.now_ms()):
+            logger.info(
+                "signal_suppressed",
+                reason="market_expired",
+                market_id=meta.market_id,
+                token_id=meta.token_id,
+                end_ts=meta.end_ts,
+            )
+            return
 
         best_bid = max((level.price for level in book.bids), default=None)
         best_ask = min((level.price for level in book.asks), default=None)
@@ -194,6 +285,124 @@ class SignalEngine:
             ),
             event_type=EventType.BOOK_SIGNAL,
         )
+
+    async def _enqueue_trade_bucket(
+        self,
+        meta: TokenMeta,
+        trade: TradeTick,
+        notional: float,
+        vol_1m: float,
+        is_big_trade: bool,
+        is_volume_spike: bool,
+    ) -> None:
+        key = self._bucket_key(meta)
+        with self._bucket_lock:
+            bucket = self._trade_buckets.get(key)
+            if bucket is None:
+                bucket = TradeSignalBucket(
+                    market_id=meta.market_id,
+                    token_id=meta.token_id,
+                    side=meta.side,
+                    category=meta.category,
+                    title=meta.title,
+                    topic_key=meta.topic_key,
+                    end_ts=meta.end_ts,
+                )
+                self._trade_buckets[key] = bucket
+                bucket.task = asyncio.create_task(self._flush_trade_bucket(key))
+            bucket.token_id = meta.token_id
+            bucket.side = meta.side
+            bucket.category = meta.category
+            bucket.title = meta.title
+            bucket.topic_key = meta.topic_key
+            bucket.end_ts = meta.end_ts
+            bucket.last_price = trade.price
+            bucket.last_size = trade.size
+            if is_big_trade:
+                bucket.has_big_trade = True
+                bucket.total_notional += notional
+                bucket.total_size += trade.size
+            if is_volume_spike:
+                bucket.has_volume_spike = True
+                bucket.max_vol_1m = (
+                    vol_1m if bucket.max_vol_1m is None else max(bucket.max_vol_1m, vol_1m)
+                )
+
+    async def _flush_trade_bucket(self, key: tuple[str, str]) -> None:
+        await asyncio.sleep(self._merge_window_sec)
+        with self._bucket_lock:
+            bucket = self._trade_buckets.pop(key, None)
+        if bucket is None:
+            return
+        meta = self._token_meta.get(bucket.token_id)
+        if meta is None:
+            return
+        now_ms = self._clock.now_ms()
+        if self._is_market_expired(meta, now_ms):
+            logger.info(
+                "signal_suppressed",
+                reason="market_expired",
+                market_id=meta.market_id,
+                token_id=meta.token_id,
+                end_ts=meta.end_ts,
+                now_ms=now_ms,
+            )
+            return
+        if bucket.has_big_trade:
+            if bucket.total_size > 0:
+                avg_price = bucket.total_notional / bucket.total_size
+            else:
+                avg_price = bucket.last_price
+            payload: SignalPayload = BigTradePayload(
+                signal=SignalType.BIG_TRADE,
+                notional=bucket.total_notional,
+                price=avg_price,
+                size=bucket.total_size or bucket.last_size,
+                vol_1m=bucket.max_vol_1m,
+            )
+        else:
+            payload = VolumeSpikePayload(
+                signal=SignalType.VOLUME_SPIKE_1M,
+                vol_1m=bucket.max_vol_1m or 0.0,
+                price=bucket.last_price,
+                size=bucket.last_size,
+            )
+        logger.info(
+            "signal_merge",
+            reason="trade_window_flush",
+            signal_type=payload.signal.value,
+            market_id=meta.market_id,
+            token_id=meta.token_id,
+            side=meta.side,
+            window_sec=self._merge_window_sec,
+        )
+        await self._emit_signal(meta=meta, payload=payload)
+
+    @staticmethod
+    def _bucket_key(meta: TokenMeta) -> tuple[str, str]:
+        return (meta.market_id, (meta.side or "n/a").upper())
+
+    def _is_market_expired(self, meta: TokenMeta, now_ms: int) -> bool:
+        if not self._drop_expired_markets:
+            return False
+        if meta.end_ts is None:
+            return False
+        return now_ms >= meta.end_ts
+
+    def _is_high_confidence_market(self, price: float) -> bool:
+        if self._high_confidence_threshold <= 0:
+            return False
+        if price < 0 or price > 1:
+            return False
+        confidence = max(price, 1.0 - price)
+        return confidence >= self._high_confidence_threshold
+
+    def _is_reverse_allow_price(self, price: float) -> bool:
+        if self._reverse_allow_threshold <= 0:
+            return False
+        if price < 0 or price > 1:
+            return False
+        return price <= self._reverse_allow_threshold
 
     async def _emit_signal(
         self,

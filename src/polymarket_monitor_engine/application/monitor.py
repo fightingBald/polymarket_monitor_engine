@@ -23,6 +23,10 @@ class SignalDetector:
         major_change_low_price_max: float,
         major_change_low_price_abs: float,
         major_change_spread_gate_k: float,
+        high_confidence_threshold: float = 0.0,
+        reverse_allow_threshold: float = 0.0,
+        merge_window_sec: float = 0.0,
+        drop_expired_markets: bool = True,
     ) -> None:
         self._engine = SignalEngine(
             clock=clock,
@@ -38,6 +42,10 @@ class SignalDetector:
             major_change_low_price_max=major_change_low_price_max,
             major_change_low_price_abs=major_change_low_price_abs,
             major_change_spread_gate_k=major_change_spread_gate_k,
+            high_confidence_threshold=high_confidence_threshold,
+            reverse_allow_threshold=reverse_allow_threshold,
+            merge_window_sec=merge_window_sec,
+            drop_expired_markets=drop_expired_markets,
         )
 
     def update_registry(self, token_meta: dict[str, TokenMeta]) -> None:
